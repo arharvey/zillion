@@ -7,6 +7,9 @@ FILE (GLOB zillion_src src/*.cpp)
 
 add_executable (zillion ${zillion_src})
 
+find_package (OpenGL REQUIRED)
+include_directories (${OPENGL_INCLUDE_DIR})
+target_link_libraries (zillion ${OPENGL_LIBRARIES})
 
 find_package (GLEW REQUIRED)
 include_directories (${GLEW_INCLUDE_DIR})

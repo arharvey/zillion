@@ -27,7 +27,7 @@ ELSE (WIN32)
 		/opt/local/include
 		DOC "The directory where GL/glew.h resides")
 	FIND_LIBRARY( GLEW_LIBRARY
-		NAMES GLEW glew
+		NAMES GLEW.a glew.a GLEW glew
 		PATHS
 		/usr/lib64
 		/usr/lib
