@@ -2,6 +2,8 @@
 #include <math.h>
 #include <iostream>
 
+#include <OpenEXR/ImathVec.h>
+
 #include "sphere.h"
 
 namespace Zillion {
@@ -14,10 +16,11 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vbo(0), m_ebo(0)
     assert(radius > 0.0);
     
     const unsigned nVertices = 2 + (subdivU * (subdivV-1));
+    const unsigned nComp = 6;
     
     // Calculate vertices
     
-    m_pVertices = new GLfloat[nVertices * 3];
+    m_pVertices = new GLfloat[nVertices * nComp];
     
     GLfloat* vtx = m_pVertices;
     
@@ -25,7 +28,7 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vbo(0), m_ebo(0)
     vtx[1] = -m_radius;
     vtx[2] = 0.0;
     
-    vtx += 3;
+    vtx += nComp;
     
     const GLfloat toAngleU = 2.0*M_PI / GLfloat(m_subdivU);
     const GLfloat toAngleV = M_PI / GLfloat(m_subdivV);
@@ -44,7 +47,7 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vbo(0), m_ebo(0)
             vtx[1] = y;
             vtx[2] = r * sin(theta);
             
-            vtx += 3;
+            vtx += nComp;
         }
     }
     
@@ -53,6 +56,23 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vbo(0), m_ebo(0)
     vtx[2] = 0.0;
     
     
+    // Since the sphere is centered on the origin, calculating normals is
+    // trivial.
+    
+    vtx = m_pVertices;
+    for(unsigned n = 0; n < nVertices; n++)
+    {
+        Imath::V3f norm(vtx[0], vtx[1], vtx[2]);
+        norm.normalize();
+        
+        vtx[3] = norm.x;
+        vtx[4] = norm.y;
+        vtx[5] = norm.z;
+        
+        vtx += nComp;
+    }
+    
+  
     // Mesh connectivity (anti-clockwise winding)
 
     const unsigned nTriangles = 2*subdivU + 2*(subdivU * (subdivV-2));
@@ -114,11 +134,12 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vbo(0), m_ebo(0)
         
         i += 3;
     }
+    
 
     // Upload to graphics card
     glGenBuffers(1, &m_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*nVertices*3,
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*nVertices*nComp,
                     m_pVertices, GL_STATIC_DRAW);
     
     glGenBuffers(1, &m_ebo);

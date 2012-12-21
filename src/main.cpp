@@ -2,14 +2,17 @@
 
 #include <iostream>
 
-#include <GL/glew.h>
+#include <OpenEXR/ImathFrustum.h>
 
+#include <GL/glew.h>
 #include "SDL.h"
 
+#include "constants.h"
 #include "shader.h"
 #include "sphere.h"
 
-
+namespace Zillion {
+  
 bool
 linkProgram(GLuint program, const char* szDesc)
 {
@@ -42,20 +45,20 @@ run()
         "/Users/andrewharvey/dev/zillion/src/fragment.glsl";
     
     // Compile OpenGL shaders
-    Zillion::Shader vertexShader(szVertexFile, GL_VERTEX_SHADER);
+    Shader vertexShader(szVertexFile, GL_VERTEX_SHADER);
     if(!vertexShader)
         return false;
     
-    Zillion::Shader fragmentShader(szFragmentFile, GL_FRAGMENT_SHADER);
+    Shader fragmentShader(szFragmentFile, GL_FRAGMENT_SHADER);
     if(!fragmentShader)
         return false;
     
     GLuint shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vertexShader.id());
-    assert(glGetError() == 0);
+    CHECK_GL();
     
     glAttachShader(shaderProgram, fragmentShader.id());
-    assert(glGetError() == 0);
+    CHECK_GL();
     
     if(!linkProgram(shaderProgram, "sphere"))
         return false;
@@ -64,13 +67,68 @@ run()
     
     {
         // Create VBO for sphere
-        Zillion::Sphere sphere(0.5, 40, 20);
+        Sphere sphere(0.5, 40, 20);
         
         GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
-        assert(glGetError() == 0);
+        GLint normAttrib = glGetAttribLocation(shaderProgram, "normal");
+       
+        glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE,
+                                6*sizeof(GLfloat), 0);
+        glVertexAttribPointer(normAttrib, 3, GL_FLOAT, GL_FALSE,
+                                6*sizeof(GLfloat), (void*)(3*sizeof(GLfloat)) );
         
-        glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
         glEnableVertexAttribArray(posAttrib);
+        glEnableVertexAttribArray(normAttrib);
+        
+        // Set up camera
+        Imath::Frustumf frustum(0.1, 1000.0, FOV, 0.0,
+                                float(WIDTH)/float(HEIGHT));
+        
+        Imath::M44f projXf = frustum.projectionMatrix();
+        
+        GLint uniProjXf = glGetUniformLocation(shaderProgram, "projectionXf");
+        glUniformMatrix4fv(uniProjXf, 1, GL_FALSE, &(projXf.x[0][0]));
+        
+        
+        Imath::M44f modelXf;
+        modelXf.makeIdentity();
+        modelXf.scale(Imath::V3f(0.1, 0.1, 0.1));
+        modelXf.rotate(Imath::V3f(0.0, toRadians(00), 0.0));
+        modelXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.0, -1.0));
+        
+        Imath::M44f viewXf;
+        viewXf.makeIdentity();
+        viewXf.rotate(
+            Imath::V3f(toRadians(0.0), toRadians(0.0), toRadians(0.0)));
+        viewXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.0, 0.0));
+        
+        
+        Imath::M44f modelViewXf = modelXf * viewXf.inverse();
+        
+        const float (*x)[4] = modelViewXf.x;
+        Imath::M33f normalXf(   x[0][0], x[0][1], x[0][2],
+                                x[1][0], x[1][1], x[1][2],
+                                x[2][0], x[2][1], x[2][2]);
+        normalXf.invert();
+        normalXf.transpose();
+        
+        GLint uniModelViewXf = glGetUniformLocation(shaderProgram, "modelViewXf");
+        glUniformMatrix4fv(uniModelViewXf, 1, GL_FALSE, &(modelViewXf.x[0][0]));
+        
+        GLint uniNormalXf = glGetUniformLocation(shaderProgram, "normalXf");
+        glUniformMatrix3fv(uniNormalXf, 1, GL_FALSE, &(normalXf.x[0][0]));
+        
+        
+        // Lights
+        
+        Imath::V3f lightDir(-1.0, -1.0, -1.0);
+        lightDir *= viewXf;
+        lightDir.normalize();
+        
+        GLint uniLightDir = glGetUniformLocation(shaderProgram, "lightDirWorld");
+        glUniform3f(uniLightDir, lightDir.x, lightDir.y, lightDir.z);
+        
+        glEnable(GL_DEPTH_TEST);
         
         SDL_Event windowEvent;
         while(true)
@@ -95,6 +153,10 @@ run()
     return true;
 }
 
+} // END NAMESPACE ZILLION
+
+
+// ---------------------------------------------------------------------------
 
 int
 main(int argc, char* argv[])
@@ -102,14 +164,14 @@ main(int argc, char* argv[])
 	SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO);
 
 	SDL_Surface* pSurface = SDL_SetVideoMode(
-								800, 600, 32,
+								Zillion::WIDTH, Zillion::HEIGHT, 32,
 								SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_OPENGL);
 	SDL_WM_SetCaption("Zillion", 0);
 
 	glewExperimental = GL_TRUE;
 	glewInit();
 
-    bool status = run();
+    bool status = Zillion::run();
 
 	SDL_Quit();
 
