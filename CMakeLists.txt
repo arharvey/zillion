@@ -3,9 +3,12 @@ project (zillion)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
 
-FILE (GLOB zillion_src src/*.cpp src/*.h)
+set (CMAKE_VERBOSE_MAKEFILE TRUE)
+find_package(CUDA REQUIRED)
 
-add_executable (zillion ${zillion_src})
+FILE (GLOB zillion_src src/*.cpp src/*.h src/*.cu)
+
+cuda_add_executable (zillion ${zillion_src})
 
 find_package (OpenGL REQUIRED)
 include_directories (${OPENGL_INCLUDE_DIR})

@@ -7,9 +7,14 @@
 #include <GL/glew.h>
 #include "SDL.h"
 
+#include <cuda_runtime.h>
+
 #include "constants.h"
 #include "shader.h"
 #include "sphere.h"
+
+void
+initGrid(float* Pd, const float* P0d, unsigned nPts);
 
 namespace Zillion {
     
@@ -123,8 +128,21 @@ run()
         const GLfloat size = 1.0;
         
         const unsigned nPts = nDimNum*nDimNum*nDimNum;
-        GLfloat* pPts = new GLfloat[nPts*3];
-        gridPts(pPts, nDimNum, size);
+        const unsigned sizeP = nPts*3*sizeof(float);
+        
+        GLfloat* P = new GLfloat[nPts*3];
+        gridPts(P, nDimNum, size);
+        
+        // Instanced positions (using CUDA)
+        
+        float *Pd[2];
+        for(unsigned n = 0; n < 2; n++)
+            cudaMalloc((void**)&Pd[n], sizeP);
+            
+        cudaMemcpy(Pd[0], P, sizeP, cudaMemcpyHostToDevice);
+        initGrid(Pd[1], Pd[0], nPts);
+        cudaMemcpy(P, Pd[1], sizeP, cudaMemcpyDeviceToHost);
+        
         
         glBindBuffer(GL_ARRAY_BUFFER, sphere.buffer(Sphere::kPt));
         
@@ -189,7 +207,7 @@ run()
             glUniformMatrix3fv(uniNormalXf, 1, GL_FALSE, &(normalXf.x[0][0]));
             
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            sphere.drawInstances(pPts, nPts);
+            sphere.drawInstances(P, nPts);
 
             SDL_GL_SwapBuffers();
             
@@ -203,6 +221,9 @@ run()
             
             std::cout << "Speed: " << fps << " fps" << std::endl;
         }
+        
+        for(unsigned n = 0; n < 2; n++)
+            cudaFree(Pd[n]);
     }
     
     return true;
