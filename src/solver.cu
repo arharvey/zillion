@@ -3,15 +3,17 @@ void
 initGridKernel(float* Pd, const float* P0d, unsigned nPts)
 {
     unsigned n = blockIdx.x*blockDim.x + threadIdx.x;
-    if(n >= nPts)
-        return;
-    
-    const float* pt0 = &P0d[n*3];
-    float* pt = &Pd[n*3];
-    
-    pt[0] = pt0[0];
-    pt[1] = pt0[1] + 0.2f;
-    pt[2] = pt0[2];
+    while(n < nPts)
+    {
+        const float* pt0 = &P0d[n*3];
+        float* pt = &Pd[n*3];
+
+        pt[0] = pt0[0];
+        pt[1] = pt0[1] + 0.2f;
+        pt[2] = pt0[2];
+        
+        n += blockDim.x * gridDim.x;
+    }
 }
 
 __host__

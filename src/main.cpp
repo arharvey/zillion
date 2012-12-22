@@ -8,6 +8,7 @@
 #include "SDL.h"
 
 #include <cuda_runtime.h>
+#include <cuda_gl_interop.h>
 
 #include "constants.h"
 #include "shader.h"
@@ -17,6 +18,8 @@ void
 initGrid(float* Pd, const float* P0d, unsigned nPts);
 
 namespace Zillion {
+
+int g_cudaDevice = 0;
     
 bool
 linkProgram(GLuint program, const char* szDesc)
@@ -63,6 +66,35 @@ gridPts(GLfloat* pPts, unsigned nDim, GLfloat size)
 
 
 // ---------------------------------------------------------------------------
+
+
+bool
+initCUDA()
+{
+    cudaError_t status;
+    
+    cudaDeviceProp cudaProp;
+   
+    memset(&cudaProp, 0, sizeof(cudaDeviceProp));
+    cudaProp.major = 1;
+    cudaProp.minor = 1;
+    
+    status = cudaChooseDevice(&g_cudaDevice, &cudaProp);
+    if(status != cudaSuccess)
+    {
+        std::cerr << "Unable to find CUDA device" << std::endl;
+        return false;
+    }
+    
+    cudaGLSetGLDevice(g_cudaDevice);
+    
+    std::cout << "Using CUDA device " << g_cudaDevice << std::endl;
+    
+    return true;
+}
+
+
+
 
 bool
 run()
@@ -136,18 +168,37 @@ run()
         // Instanced positions (using CUDA)
         
         float *Pd[2];
+        GLuint Pgl[2];
+        glGenBuffers(2, Pgl);
+        cudaGraphicsResource *Pres[2];
+
         for(unsigned n = 0; n < 2; n++)
-            cudaMalloc((void**)&Pd[n], sizeP);
+        {
+            glBindBuffer(GL_ARRAY_BUFFER, Pgl[n]);
+            glBufferData(GL_ARRAY_BUFFER, sizeP, NULL, GL_DYNAMIC_DRAW);
             
+            cudaGraphicsGLRegisterBuffer(&Pres[n], Pgl[n],
+                                         cudaGraphicsMapFlagsNone);
+        }
+            
+        
+        for(unsigned n = 0; n < 2; n++)
+        {
+            size_t s;
+            
+            ::cudaGraphicsMapResources(1, &Pres[n]);
+            cudaGraphicsResourceGetMappedPointer((void**)&Pd[n], &s, Pres[n]);
+        }
+        
         cudaMemcpy(Pd[0], P, sizeP, cudaMemcpyHostToDevice);
         initGrid(Pd[1], Pd[0], nPts);
-        cudaMemcpy(P, Pd[1], sizeP, cudaMemcpyDeviceToHost);
         
-        
-        glBindBuffer(GL_ARRAY_BUFFER, sphere.buffer(Sphere::kPt));
+        for(unsigned n = 0; n < 2; n++)
+            ::cudaGraphicsUnmapResources(1, &Pres[n]);
         
         GLint ptAttrib = glGetAttribLocation(shaderProgram, "pt");
         
+        glBindBuffer(GL_ARRAY_BUFFER, Pgl[1]);
         glVertexAttribPointer(ptAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
         glVertexAttribDivisorARB(ptAttrib, 1);
         glEnableVertexAttribArray(ptAttrib);
@@ -207,7 +258,7 @@ run()
             glUniformMatrix3fv(uniNormalXf, 1, GL_FALSE, &(normalXf.x[0][0]));
             
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            sphere.drawInstances(P, nPts);
+            sphere.drawInstances(nPts);
 
             SDL_GL_SwapBuffers();
             
@@ -234,9 +285,13 @@ run()
 
 // ---------------------------------------------------------------------------
 
+
 int
 main(int argc, char* argv[])
 {
+    if(!Zillion::initCUDA())
+        return 1;
+    
 	SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO);
 
     // Disable vertical sync. Warning: SDL_GL_SWAP_CONTROL is deprecated

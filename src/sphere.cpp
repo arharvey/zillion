@@ -157,12 +157,8 @@ Sphere::draw() const
 
 
 void
-Sphere::drawInstances(const GLfloat* pPts, unsigned nPts) const
+Sphere::drawInstances(unsigned nPts) const
 {
-    glBindBuffer(GL_ARRAY_BUFFER, m_buffer[kPt]);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*nPts*3,
-                    pPts, GL_DYNAMIC_DRAW);
-    
     glDrawElementsInstanced(GL_TRIANGLES, m_nElements,
                                       GL_UNSIGNED_INT, 0,
                                       nPts);

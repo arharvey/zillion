@@ -13,7 +13,6 @@ public:
     {
         kVertex = 0,
         kElement = 1,
-        kPt = 2,
         kBuffers
     };
     
@@ -23,7 +22,7 @@ public:
     GLuint buffer(Buffer id) const {return m_buffer[id];}
     
     void draw() const;
-    void drawInstances(const GLfloat* pPts, unsigned nPts) const;
+    void drawInstances(unsigned nPts) const;
     
 protected:
     const GLfloat m_radius; /// Radius
@@ -34,7 +33,7 @@ protected:
     GLuint* m_pElements; /// Mesh connectivity
     unsigned m_nElements; /// Number of elements
     
-    GLuint m_buffer[3]; // Buffers
+    GLuint m_buffer[kBuffers]; // Buffers
 };
 
 } // END NAMESPACE ZILLION
