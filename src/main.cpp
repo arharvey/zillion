@@ -218,9 +218,13 @@ main(int argc, char* argv[])
 {
 	SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO);
 
+    // Disable vertical sync. Warning: SDL_GL_SWAP_CONTROL is deprecated
+    SDL_GL_SetAttribute( SDL_GL_SWAP_CONTROL, 0 );
+    
 	SDL_Surface* pSurface = SDL_SetVideoMode(
 								Zillion::WIDTH, Zillion::HEIGHT, 32,
 								SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_OPENGL);
+     
 	SDL_WM_SetCaption("Zillion", 0);
 
 	glewExperimental = GL_TRUE;
