@@ -13,6 +13,7 @@
 #include "constants.h"
 #include "shader.h"
 #include "sphere.h"
+#include "sharedBuffer.h"
 
 void
 initGrid(float* Pd, const float* P0d, unsigned nPts);
@@ -68,12 +69,92 @@ gridPts(GLfloat* pPts, unsigned nDim, GLfloat size)
 // ---------------------------------------------------------------------------
 
 
+void
+printCUDADeviceProperties(const cudaDeviceProp& prop)
+{
+    std::cout << "Name: " << prop.name << std::endl;
+        
+    std::cout << "Compute capability: "
+            << prop.major << "." << prop.minor << std::endl;
+
+    std::cout << "Clock rate: " 
+            << prop.clockRate/1000 << " MHz" << std::endl;
+
+    std::cout << "Integrated: "
+            << yesNo(prop.integrated) << std::endl;
+
+    std::cout << "Global memory: " 
+            << inMB(prop.totalGlobalMem) << " MB" << std::endl;
+
+    std::cout << "Constant memory: "
+            << prop.totalConstMem << " bytes" << std::endl;
+
+    std::cout << "Shared memory per block: "
+            << prop.sharedMemPerBlock << " bytes" << std::endl;
+
+    std::cout << "Registers per block: "
+            << prop.regsPerBlock << std::endl;
+
+    std::cout << "Max threads per block: "
+            << prop.maxThreadsPerBlock << std::endl;
+
+    std::cout << "Max thread dimensions: "
+            << prop.maxThreadsDim[0] << ", "
+            << prop.maxThreadsDim[1] << ", "
+            << prop.maxThreadsDim[2] << std::endl;
+
+    std::cout << "Max grid size: "
+            << prop.maxGridSize[0] << ", "
+            << prop.maxGridSize[1] << ", "
+            << prop.maxGridSize[2] << std::endl;
+
+    std::cout << "Max threads per multi-processor: "
+            << prop.maxThreadsPerMultiProcessor << std::endl;
+
+    std::cout << "Async engine count: "
+            << prop.asyncEngineCount << std::endl;
+
+
+    std::cout << "Can map host memory: "
+            << yesNo(prop.canMapHostMemory) << std::endl;
+
+    std::cout << "Unified addressing: "
+            << yesNo(prop.unifiedAddressing) << std::endl;
+
+    std::cout << "Concurrent kernels: "
+            << yesNo(prop.concurrentKernels) << std::endl;
+}
+
+
 bool
 initCUDA()
 {
     cudaError_t status;
-    
+
     cudaDeviceProp cudaProp;
+    
+    // Discover CUDA devices
+    
+    int nDeviceCount;
+    cudaGetDeviceCount(&nDeviceCount);
+    
+    std::cout << "Found " << nDeviceCount << " CUDA devices" << std::endl;
+    std::cout << std::endl;
+    
+    for(int nDevice = 0; nDevice < nDeviceCount; nDevice++)
+    {
+        std::cout << "DEVICE " << nDevice << std::endl;
+        std::cout << "========" << std::endl;
+        
+        cudaDeviceProp prop;
+        cudaGetDeviceProperties(&prop, nDevice);
+        
+        printCUDADeviceProperties(prop);
+        
+        std::cout << std::endl;
+    }
+    
+    // Request a suitable CUDA device
    
     memset(&cudaProp, 0, sizeof(cudaDeviceProp));
     cudaProp.major = 1;
@@ -89,6 +170,8 @@ initCUDA()
     cudaGLSetGLDevice(g_cudaDevice);
     
     std::cout << "Using CUDA device " << g_cudaDevice << std::endl;
+    
+    std::cout << std::endl;
     
     return true;
 }
@@ -160,45 +243,30 @@ run()
         const GLfloat size = 1.0;
         
         const unsigned nPts = nDimNum*nDimNum*nDimNum;
+        std::cout << "Instancing " << nPts << " objects" << std::endl;
+        
         const unsigned sizeP = nPts*3*sizeof(float);
         
-        GLfloat* P = new GLfloat[nPts*3];
-        gridPts(P, nDimNum, size);
+        GLfloat* Pinit = new GLfloat[nPts*3];
+        gridPts(Pinit, nDimNum, size);
         
         // Instanced positions (using CUDA)
         
-        float *Pd[2];
-        GLuint Pgl[2];
-        glGenBuffers(2, Pgl);
-        cudaGraphicsResource *Pres[2];
-
-        for(unsigned n = 0; n < 2; n++)
-        {
-            glBindBuffer(GL_ARRAY_BUFFER, Pgl[n]);
-            glBufferData(GL_ARRAY_BUFFER, sizeP, NULL, GL_DYNAMIC_DRAW);
-            
-            cudaGraphicsGLRegisterBuffer(&Pres[n], Pgl[n],
-                                         cudaGraphicsMapFlagsNone);
-        }
-            
+        SharedBuffer P0(GL_ARRAY_BUFFER, nPts*3, GL_DYNAMIC_DRAW);
+        SharedBuffer P1(GL_ARRAY_BUFFER, nPts*3, GL_DYNAMIC_DRAW);
         
-        for(unsigned n = 0; n < 2; n++)
-        {
-            size_t s;
-            
-            ::cudaGraphicsMapResources(1, &Pres[n]);
-            cudaGraphicsResourceGetMappedPointer((void**)&Pd[n], &s, Pres[n]);
-        }
+        P0.map();
+        P1.map();
         
-        cudaMemcpy(Pd[0], P, sizeP, cudaMemcpyHostToDevice);
-        initGrid(Pd[1], Pd[0], nPts);
+        cudaMemcpy(P0, Pinit, sizeP, cudaMemcpyHostToDevice);
+        initGrid(P1, P0, nPts);
         
-        for(unsigned n = 0; n < 2; n++)
-            ::cudaGraphicsUnmapResources(1, &Pres[n]);
+        P0.unmap();
+        P1.unmap();
         
         GLint ptAttrib = glGetAttribLocation(shaderProgram, "pt");
         
-        glBindBuffer(GL_ARRAY_BUFFER, Pgl[1]);
+        P1.bind();
         glVertexAttribPointer(ptAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
         glVertexAttribDivisorARB(ptAttrib, 1);
         glEnableVertexAttribArray(ptAttrib);
@@ -272,9 +340,6 @@ run()
             
             std::cout << "Speed: " << fps << " fps" << std::endl;
         }
-        
-        for(unsigned n = 0; n < 2; n++)
-            cudaFree(Pd[n]);
     }
     
     return true;
