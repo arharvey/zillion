@@ -12,7 +12,7 @@
 #include "sphere.h"
 
 namespace Zillion {
-  
+    
 bool
 linkProgram(GLuint program, const char* szDesc)
 {
@@ -31,6 +31,29 @@ linkProgram(GLuint program, const char* szDesc)
     }
     
     return true;
+}
+
+
+void
+gridPts(GLfloat* pPts, unsigned nDim, GLfloat size)
+{
+    const GLfloat _DIM = 1.0/GLfloat(nDim);
+    
+    GLfloat* pt = pPts;
+    for(unsigned k = 0; k < nDim; k++)
+    {
+        for(unsigned j = 0; j < nDim; j++)
+        {
+            for(unsigned i = 0; i < nDim; i++)
+            {
+                pt[0] = (((GLfloat(i)+.5)*_DIM) - 0.5) * size;
+                pt[1] = (((GLfloat(j)+.5)*_DIM) - 0.5) * size;
+                pt[2] = (((GLfloat(k)+.5)*_DIM) - 0.5) * size;
+
+                pt += 3;
+            }
+        }
+    }
 }
 
 
@@ -67,7 +90,7 @@ run()
     
     {
         // Create VBO for sphere
-        Sphere sphere(0.5, 40, 20);
+        Sphere sphere(0.5, 8, 4);
         
         GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
         GLint normAttrib = glGetAttribLocation(shaderProgram, "normal");
@@ -87,14 +110,31 @@ run()
         Imath::M44f projXf = frustum.projectionMatrix();
         
         GLint uniProjXf = glGetUniformLocation(shaderProgram, "projectionXf");
+        GLint uniModelViewXf = glGetUniformLocation(shaderProgram, "modelViewXf");
+        GLint uniNormalXf = glGetUniformLocation(shaderProgram, "normalXf");
+        
+        GLint uniLightDir = glGetUniformLocation(shaderProgram, "lightDirWorld");
+        
         glUniformMatrix4fv(uniProjXf, 1, GL_FALSE, &(projXf.x[0][0]));
         
+        // Instanced positions
         
-        Imath::M44f modelXf;
-        modelXf.makeIdentity();
-        modelXf.scale(Imath::V3f(0.1, 0.1, 0.1));
-        modelXf.rotate(Imath::V3f(0.0, toRadians(00), 0.0));
-        modelXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.0, -1.0));
+        const unsigned nDimNum = 20;
+        const GLfloat size = 1.0;
+        
+        const unsigned nPts = nDimNum*nDimNum*nDimNum;
+        GLfloat* pPts = new GLfloat[nPts*3];
+        gridPts(pPts, nDimNum, size);
+        
+        glBindBuffer(GL_ARRAY_BUFFER, sphere.buffer(Sphere::kPt));
+        
+        GLint ptAttrib = glGetAttribLocation(shaderProgram, "pt");
+        
+        glVertexAttribPointer(ptAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
+        glVertexAttribDivisorARB(ptAttrib, 1);
+        glEnableVertexAttribArray(ptAttrib);
+        
+        // View
         
         Imath::M44f viewXf;
         viewXf.makeIdentity();
@@ -102,33 +142,18 @@ run()
             Imath::V3f(toRadians(0.0), toRadians(0.0), toRadians(0.0)));
         viewXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.0, 0.0));
         
-        
-        Imath::M44f modelViewXf = modelXf * viewXf.inverse();
-        
-        const float (*x)[4] = modelViewXf.x;
-        Imath::M33f normalXf(   x[0][0], x[0][1], x[0][2],
-                                x[1][0], x[1][1], x[1][2],
-                                x[2][0], x[2][1], x[2][2]);
-        normalXf.invert();
-        normalXf.transpose();
-        
-        GLint uniModelViewXf = glGetUniformLocation(shaderProgram, "modelViewXf");
-        glUniformMatrix4fv(uniModelViewXf, 1, GL_FALSE, &(modelViewXf.x[0][0]));
-        
-        GLint uniNormalXf = glGetUniformLocation(shaderProgram, "normalXf");
-        glUniformMatrix3fv(uniNormalXf, 1, GL_FALSE, &(normalXf.x[0][0]));
-        
-        
         // Lights
         
         Imath::V3f lightDir(-1.0, -1.0, -1.0);
         lightDir *= viewXf;
         lightDir.normalize();
         
-        GLint uniLightDir = glGetUniformLocation(shaderProgram, "lightDirWorld");
         glUniform3f(uniLightDir, lightDir.x, lightDir.y, lightDir.z);
         
         glEnable(GL_DEPTH_TEST);
+        
+        unsigned nFrameCount = 0;
+        Uint64 nStartTick = SDL_GetTicks();
         
         SDL_Event windowEvent;
         while(true)
@@ -143,10 +168,40 @@ run()
                     break;
             }
 
+            GLfloat animRotY = (GLfloat(SDL_GetTicks()) / 1000.0) * 45.0;
+        
+            Imath::M44f modelXf;
+            modelXf.makeIdentity();
+            modelXf.scale(Imath::V3f(1.0, 1.0, 1.0));
+            modelXf.rotate(Imath::V3f(0.0, toRadians(animRotY), toRadians(animRotY)));
+            modelXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.0, -2));
+
+            Imath::M44f modelViewXf = modelXf * viewXf.inverse();
+
+            const float (*x)[4] = modelViewXf.x;
+            Imath::M33f normalXf(   x[0][0], x[0][1], x[0][2],
+                                    x[1][0], x[1][1], x[1][2],
+                                    x[2][0], x[2][1], x[2][2]);
+            normalXf.invert();
+            normalXf.transpose();
+
+            glUniformMatrix4fv(uniModelViewXf, 1, GL_FALSE, &(modelViewXf.x[0][0]));
+            glUniformMatrix3fv(uniNormalXf, 1, GL_FALSE, &(normalXf.x[0][0]));
+            
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            sphere.draw();
+            sphere.drawInstances(pPts, nPts);
 
             SDL_GL_SwapBuffers();
+            
+            nFrameCount++;
+        }
+        
+        if(nFrameCount > 0)
+        {
+            Uint64 nTicks = SDL_GetTicks() - nStartTick;
+            float fps = float(nFrameCount) / (float(nTicks) / 1000.0);
+            
+            std::cout << "Speed: " << fps << " fps" << std::endl;
         }
     }
     

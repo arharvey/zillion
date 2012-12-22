@@ -9,7 +9,7 @@ namespace {
 const unsigned WIDTH = 800;
 const unsigned HEIGHT = 600;
     
-const float FOV = toRadians(90.0);
+const float FOV = toRadians(60.0);
     
     
 } // END NAMESPACE ANONYMOUS

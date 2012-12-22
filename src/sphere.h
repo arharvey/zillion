@@ -9,13 +9,21 @@ namespace Zillion {
 class Sphere
 {
 public:
+    enum Buffer
+    {
+        kVertex = 0,
+        kElement = 1,
+        kPt = 2,
+        kBuffers
+    };
+    
     Sphere(GLfloat radius, unsigned subdivU, unsigned subdivV);
     virtual ~Sphere();
     
-    const GLfloat* vertexBuffer() const {return m_pVertices;}
-    const GLuint* indexBuffer() const {return m_pElements;}
+    GLuint buffer(Buffer id) const {return m_buffer[id];}
     
     void draw() const;
+    void drawInstances(const GLfloat* pPts, unsigned nPts) const;
     
 protected:
     const GLfloat m_radius; /// Radius
@@ -26,10 +34,8 @@ protected:
     GLuint* m_pElements; /// Mesh connectivity
     unsigned m_nElements; /// Number of elements
     
-    GLuint m_vbo; // Vertex buffer object
-    GLuint m_ebo; // Element buffer object
+    GLuint m_buffer[3]; // Buffers
 };
-
 
 } // END NAMESPACE ZILLION
 

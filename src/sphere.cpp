@@ -10,7 +10,7 @@ namespace Zillion {
   
 Sphere::Sphere(GLfloat radius, unsigned subdivU, unsigned subdivV):
 m_radius(radius), m_subdivU(subdivU), m_subdivV(subdivV),
-m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vbo(0), m_ebo(0)
+m_pVertices(NULL), m_pElements(NULL), m_nElements(0)
 {
     assert(subdivU >= 3 && subdivV >= 2);
     assert(radius > 0.0);
@@ -137,13 +137,13 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vbo(0), m_ebo(0)
     
 
     // Upload to graphics card
-    glGenBuffers(1, &m_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
+    glGenBuffers(kBuffers, m_buffer);
+    
+    glBindBuffer(GL_ARRAY_BUFFER, m_buffer[kVertex]);
     glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*nVertices*nComp,
                     m_pVertices, GL_STATIC_DRAW);
     
-    glGenBuffers(1, &m_ebo);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_buffer[kElement]);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)*nTriangles*3,
                     m_pElements, GL_STATIC_DRAW);
 }
@@ -156,10 +156,22 @@ Sphere::draw() const
 }
 
 
+void
+Sphere::drawInstances(const GLfloat* pPts, unsigned nPts) const
+{
+    glBindBuffer(GL_ARRAY_BUFFER, m_buffer[kPt]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*nPts*3,
+                    pPts, GL_DYNAMIC_DRAW);
+    
+    glDrawElementsInstanced(GL_TRIANGLES, m_nElements,
+                                      GL_UNSIGNED_INT, 0,
+                                      nPts);
+}
+
+
 Sphere::~Sphere()
 {
-    glDeleteBuffers( 1, &m_ebo );
-    glDeleteBuffers( 1, &m_vbo );
+    glDeleteBuffers( kBuffers, m_buffer );
     
     delete [] m_pElements;
     delete [] m_pVertices;;
