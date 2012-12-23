@@ -5,7 +5,10 @@
 
 namespace Zillion {
 namespace {
-   
+
+const GLfloat NEAR = 0.1;
+const GLfloat FAR = 1000;
+    
 const unsigned WIDTH = 800;
 const unsigned HEIGHT = 600;
     

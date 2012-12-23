@@ -4,13 +4,13 @@
 
 #include <OpenEXR/ImathVec.h>
 
-#include "sphere.h"
+#include "spherePrimitive.h"
 
 namespace Zillion {
   
-Sphere::Sphere(GLfloat radius, unsigned subdivU, unsigned subdivV):
+SpherePrimitive::SpherePrimitive(GLfloat radius, unsigned subdivU, unsigned subdivV):
 m_radius(radius), m_subdivU(subdivU), m_subdivV(subdivV),
-m_pVertices(NULL), m_pElements(NULL), m_nElements(0)
+m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vao(0)
 {
     assert(subdivU >= 3 && subdivV >= 2);
     assert(radius > 0.0);
@@ -137,8 +137,8 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0)
     
 
     // Upload to graphics card
-    glGenVertexArrays(1, &m_vao);
-    glBindVertexArray(m_vao);
+    glGenVertexArraysAPPLE(1, &m_vao);
+    glBindVertexArrayAPPLE(m_vao);
     
     glGenBuffers(kBuffers, m_buffer);
     
@@ -160,39 +160,52 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0)
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)*nTriangles*3,
                     m_pElements, GL_STATIC_DRAW);
     
-    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindVertexArrayAPPLE(0);
+    
+    delete [] m_pElements;
+    delete [] m_pVertices;
 }
 
 
 void
-Sphere::bind()
+SpherePrimitive::bind() const
 {
-    glBindVertexArray(m_vao);
+    glBindVertexArrayAPPLE(m_vao);
+    
 }
 
 
 void
-Sphere::draw() const
+SpherePrimitive::unbind() const
+{
+    glBindVertexArrayAPPLE(0);
+}
+
+
+void
+SpherePrimitive::draw() const
 {
     glDrawElements(GL_TRIANGLES, m_nElements, GL_UNSIGNED_INT, 0);
 }
 
 
 void
-Sphere::drawInstances(unsigned nPts) const
+SpherePrimitive::drawInstances(unsigned nPts) const
 {
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_buffer[kElement]);
     glDrawElementsInstanced(GL_TRIANGLES, m_nElements,
                                       GL_UNSIGNED_INT, 0,
                                       nPts);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
 
-Sphere::~Sphere()
+SpherePrimitive::~SpherePrimitive()
 {
     glDeleteBuffers( kBuffers, m_buffer );
-    
-    delete [] m_pElements;
-    delete [] m_pVertices;;
+    glDeleteVertexArraysAPPLE(1, &m_vao);
 }
 
 

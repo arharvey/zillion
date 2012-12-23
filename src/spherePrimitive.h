@@ -1,12 +1,12 @@
-#ifndef _zillion_sphere_h
-#define _zillion_sphere_h
+#ifndef _zillion_spherePrimitive_h
+#define _zillion_spherePrimitive_h
 
 #include <GL/glew.h>
 
 namespace Zillion {
 
 /// Initialise a Sphere primitive
-class Sphere
+class SpherePrimitive
 {
 public:
     enum Buffer
@@ -16,10 +16,11 @@ public:
         kBuffers
     };
     
-    Sphere(GLfloat radius, unsigned subdivU, unsigned subdivV);
-    virtual ~Sphere();
+    SpherePrimitive(GLfloat radius, unsigned subdivU, unsigned subdivV);
+    virtual ~SpherePrimitive();
     
-    void bind();
+    void bind() const;
+    void unbind() const;
     
     void draw() const;
     void drawInstances(unsigned nPts) const;

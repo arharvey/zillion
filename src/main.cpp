@@ -12,7 +12,9 @@
 
 #include "constants.h"
 #include "shader.h"
-#include "sphere.h"
+#include "program.h"
+#include "planePrimitive.h"
+#include "spherePrimitive.h"
 #include "sharedBuffer.h"
 
 void
@@ -22,27 +24,6 @@ namespace Zillion {
 
 int g_cudaDevice = 0;
     
-bool
-linkProgram(GLuint program, const char* szDesc)
-{
-    glLinkProgram(program);
-    
-    GLint status = GL_FALSE;
-    glGetProgramiv(program, GL_LINK_STATUS, &status);
-    if(status != GL_TRUE)
-    {
-        char buffer[1024];
-        glGetProgramInfoLog(program, 1024, NULL, buffer);
-        
-        std::cerr << "Error linking program '" << szDesc << "':" << std::endl;
-        std::cerr << buffer << std::endl;
-        return false;
-    }
-    
-    return true;
-}
-
-
 void
 gridPts(GLfloat* pPts, unsigned nDim, GLfloat size)
 {
@@ -177,47 +158,139 @@ initCUDA()
 }
 
 
+// ---------------------------------------------------------------------------
 
+class ParticleProgram : public Program
+{
+public:
+    enum Uniform
+    {
+        kProjectionXf = 0,
+        kModelViewXf,
+        kModelViewNormalXf,
+        kLightDirWorld,
+        kNumUniforms
+    };
+    
+    static const char* szUniforms[kNumUniforms];
+    
+    ParticleProgram(const std::string& strShaderDir):
+    Program(kNumUniforms),
+    m_vertex((strShaderDir+"particleVertex.glsl").c_str(), GL_VERTEX_SHADER),
+    m_fragment((strShaderDir+"particleFragment.glsl").c_str(), GL_FRAGMENT_SHADER)
+    {
+        if(!m_vertex || !m_fragment)
+            return;
+        
+        GLuint program = glCreateProgram();
+        glAttachShader(program, m_vertex.id());
+        glAttachShader(program, m_fragment.id());
+        
+        glBindAttribLocation(program, 0, "position");
+        glBindAttribLocation(program, 1, "normal");
+        glBindAttribLocation(program, 2, "pt");
+
+        if(!link(program, "particle"))
+            return;
+
+        // Program successfully linked
+        m_program = program;
+        
+        initUniformLocations(szUniforms, kNumUniforms);
+    }
+    
+    
+protected:
+    Shader m_vertex;
+    Shader m_fragment;
+};
+
+
+const char* ParticleProgram::szUniforms[] = {
+    "projectionXf",
+    "modelViewXf",
+    "normalXf",
+    "lightDirWorld"
+};
+
+
+// ---------------------------------------------------------------------------
+
+class PlaneProgram : public Program
+{
+public:
+    enum Uniform
+    {
+        kProjectionXf = 0,
+        kViewXf,
+        kViewNormalXf,
+        kLightDirWorld,
+        kSurfaceColor,
+        kNumUniforms
+    };
+    
+    static const char* szUniforms[kNumUniforms];
+    
+    PlaneProgram(const std::string& strShaderDir):
+    Program(kNumUniforms),
+    m_vertex((strShaderDir+"planeVertex.glsl").c_str(), GL_VERTEX_SHADER),
+    m_fragment((strShaderDir+"planeFragment.glsl").c_str(), GL_FRAGMENT_SHADER)
+    {
+        if(!m_vertex || !m_fragment)
+            return;
+        
+        GLuint program = glCreateProgram();
+        glAttachShader(program, m_vertex.id());
+        glAttachShader(program, m_fragment.id());
+        
+        glBindAttribLocation(program, 0, "position");
+        glBindAttribLocation(program, 1, "normal");
+        glBindAttribLocation(program, 2, "uv");
+
+        if(!link(program, "plane"))
+            return;
+
+        // Program successfully linked
+        m_program = program;
+        
+        initUniformLocations(szUniforms, kNumUniforms);
+    }
+    
+    
+protected:
+    Shader m_vertex;
+    Shader m_fragment;
+};
+
+
+const char* PlaneProgram::szUniforms[] = {
+    "projectionXf",
+    "viewXf",
+    "normalXf",
+    "lightDirWorld",
+    "surfaceColor"
+};
+
+
+// ---------------------------------------------------------------------------
 
 bool
 run()
 {
-    const char* szVertexFile =
-        "/Users/andrewharvey/dev/zillion/src/vertex.glsl";
-    const char* szFragmentFile =
-        "/Users/andrewharvey/dev/zillion/src/fragment.glsl";
-    
-    // Compile OpenGL shaders
-    Shader vertexShader(szVertexFile, GL_VERTEX_SHADER);
-    if(!vertexShader)
+    // Particle program
+    ParticleProgram particleProg("/Users/andrewharvey/dev/zillion/src/");
+    if(!particleProg)
         return false;
     
-    Shader fragmentShader(szFragmentFile, GL_FRAGMENT_SHADER);
-    if(!fragmentShader)
+    PlaneProgram planeProg("/Users/andrewharvey/dev/zillion/src/");
+    if(!planeProg)
         return false;
-    
-    GLuint shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, vertexShader.id());
-    glAttachShader(shaderProgram, fragmentShader.id());
-    
-    glBindAttribLocation(shaderProgram, 0, "position");
-    glBindAttribLocation(shaderProgram, 1, "normal");
-    glBindAttribLocation(shaderProgram, 2, "pt");
-    
-    if(!linkProgram(shaderProgram, "sphere"))
-        return false;
-    
-    glUseProgram(shaderProgram);
     
     {
-        GLint uniProjXf = glGetUniformLocation(shaderProgram, "projectionXf");
-        GLint uniModelViewXf = glGetUniformLocation(shaderProgram, "modelViewXf");
-        GLint uniNormalXf = glGetUniformLocation(shaderProgram, "normalXf");
-        GLint uniLightDir = glGetUniformLocation(shaderProgram, "lightDirWorld");
-        
         // Create VBO for sphere
-        Sphere sphere(0.5, 8, 4);
-        
+        PlanePrimitive plane( Imath::Plane3f(Imath::V3f(0.0, 1.0, 0.0), 0.0));
+        SpherePrimitive sphere(0.5, 8, 4);
+       
         // Instanced positions
         
         const unsigned nDimNum = 20;
@@ -225,7 +298,7 @@ run()
         
         const unsigned nPts = nDimNum*nDimNum*nDimNum;
         std::cout << "Instancing " << nPts << " objects" << std::endl;
-        
+         
         const unsigned sizeP = nPts*3*sizeof(float);
         
         GLfloat* Pinit = new GLfloat[nPts*3];
@@ -244,24 +317,31 @@ run()
         
         P0.unmap();
         P1.unmap();
-        
+         
         // Centers
-        GLint centerAttrib = glGetAttribLocation(shaderProgram, "center");
-        
+        GLint centerAttrib = glGetAttribLocation(particleProg, "center");
+      
         sphere.bind();
         P1.bind();
+
         glEnableVertexAttribArray(centerAttrib);
         glVertexAttribPointer(centerAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
         glVertexAttribDivisorARB(centerAttrib, 1);
+        sphere.unbind();
         
         // Projection
         
-        Imath::Frustumf frustum(0.1, 1000.0, FOV, 0.0,
+        Imath::Frustumf frustum(NEAR, FAR, FOV, 0.0,
                                 float(WIDTH)/float(HEIGHT));
         
         Imath::M44f projXf = frustum.projectionMatrix();
         
-        glUniformMatrix4fv(uniProjXf, 1, GL_FALSE, &(projXf.x[0][0]));
+        particleProg.use();
+        particleProg.set(ParticleProgram::kProjectionXf, projXf);
+        
+        planeProg.use();
+        planeProg.set(PlaneProgram::kProjectionXf, projXf);
+        planeProg.set(PlaneProgram::kSurfaceColor, Imath::V3f(1.0, 1.0, 1.0));
         
         glEnable(GL_DEPTH_TEST);
         
@@ -282,13 +362,28 @@ run()
             }
 
             
-            // View
+            // Camera
         
-            Imath::M44f viewXf;
-            viewXf.makeIdentity();
-            viewXf.rotate(
+            Imath::M44f cameraXf;
+            cameraXf.makeIdentity();
+            cameraXf.rotate(
                 Imath::V3f(toRadians(0.0), toRadians(0.0), toRadians(0.0)));
-            viewXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.0, 0.0));
+            cameraXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.5, 0.0));
+            
+            
+            // View
+            
+            Imath::M44f viewXf = cameraXf.inverse();
+            
+            // View Normal transform
+            
+            const float (*x)[4];
+            x = viewXf.x;
+            Imath::M33f viewNormalXf(  x[0][0], x[0][1], x[0][2],
+                                       x[1][0], x[1][1], x[1][2],
+                                       x[2][0], x[2][1], x[2][2]);
+            viewNormalXf.invert();
+            viewNormalXf.transpose();
             
             // Model
             
@@ -298,38 +393,50 @@ run()
             modelXf.makeIdentity();
             modelXf.scale(Imath::V3f(1.0, 1.0, 1.0));
             modelXf.rotate(Imath::V3f(0.0, toRadians(animRotY), toRadians(animRotY)));
-            modelXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.0, -2));
+            modelXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.5, -2));
 
             // ModelView
             
-            Imath::M44f modelViewXf = modelXf * viewXf.inverse();
-
-            glUniformMatrix4fv(uniModelViewXf, 1, GL_FALSE, &(modelViewXf.x[0][0]));
+            Imath::M44f modelViewXf = modelXf * viewXf;
             
-            // Normal transform
+            // ModelView Normal transform
             
-            const float (*x)[4] = modelViewXf.x;
-            Imath::M33f normalXf(   x[0][0], x[0][1], x[0][2],
-                                    x[1][0], x[1][1], x[1][2],
-                                    x[2][0], x[2][1], x[2][2]);
-            normalXf.invert();
-            normalXf.transpose();
-            
-            glUniformMatrix3fv(uniNormalXf, 1, GL_FALSE, &(normalXf.x[0][0]));
+            x = modelViewXf.x;
+            Imath::M33f modelViewNormalXf(  x[0][0], x[0][1], x[0][2],
+                                            x[1][0], x[1][1], x[1][2],
+                                            x[2][0], x[2][1], x[2][2]);
+            modelViewNormalXf.invert();
+            modelViewNormalXf.transpose();
             
             // Lights
         
             Imath::V3f lightDir(-1.0, -1.0, -1.0);
             lightDir *= viewXf;
             lightDir.normalize();
-
-            glUniform3f(uniLightDir, lightDir.x, lightDir.y, lightDir.z);
             
             // Redraw
             
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            
+            planeProg.use();
+            planeProg.set(PlaneProgram::kViewXf, viewXf);
+            planeProg.set(PlaneProgram::kViewNormalXf, viewNormalXf);
+            planeProg.set(PlaneProgram::kLightDirWorld, lightDir);
+            
+            plane.update(viewXf * projXf, NEAR, FAR);
+            plane.bind();
+            plane.draw();
+            plane.unbind();
+            
+            particleProg.use();
+            particleProg.set(ParticleProgram::kModelViewXf, modelViewXf);
+            particleProg.set(ParticleProgram::kModelViewNormalXf, modelViewNormalXf);
+            particleProg.set(ParticleProgram::kLightDirWorld, lightDir);
+            
+            sphere.bind();
             sphere.drawInstances(nPts);
-
+            sphere.unbind();
+            
             SDL_GL_SwapBuffers();
             
             nFrameCount++;
