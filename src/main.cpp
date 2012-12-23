@@ -198,10 +198,11 @@ run()
     
     GLuint shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vertexShader.id());
-    CHECK_GL();
-    
     glAttachShader(shaderProgram, fragmentShader.id());
-    CHECK_GL();
+    
+    glBindAttribLocation(shaderProgram, 0, "position");
+    glBindAttribLocation(shaderProgram, 1, "normal");
+    glBindAttribLocation(shaderProgram, 2, "pt");
     
     if(!linkProgram(shaderProgram, "sphere"))
         return false;
@@ -209,33 +210,13 @@ run()
     glUseProgram(shaderProgram);
     
     {
-        // Create VBO for sphere
-        Sphere sphere(0.5, 8, 4);
-        
-        GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
-        GLint normAttrib = glGetAttribLocation(shaderProgram, "normal");
-       
-        glVertexAttribPointer(posAttrib, 3, GL_FLOAT, GL_FALSE,
-                                6*sizeof(GLfloat), 0);
-        glVertexAttribPointer(normAttrib, 3, GL_FLOAT, GL_FALSE,
-                                6*sizeof(GLfloat), (void*)(3*sizeof(GLfloat)) );
-        
-        glEnableVertexAttribArray(posAttrib);
-        glEnableVertexAttribArray(normAttrib);
-        
-        // Set up camera
-        Imath::Frustumf frustum(0.1, 1000.0, FOV, 0.0,
-                                float(WIDTH)/float(HEIGHT));
-        
-        Imath::M44f projXf = frustum.projectionMatrix();
-        
         GLint uniProjXf = glGetUniformLocation(shaderProgram, "projectionXf");
         GLint uniModelViewXf = glGetUniformLocation(shaderProgram, "modelViewXf");
         GLint uniNormalXf = glGetUniformLocation(shaderProgram, "normalXf");
-        
         GLint uniLightDir = glGetUniformLocation(shaderProgram, "lightDirWorld");
         
-        glUniformMatrix4fv(uniProjXf, 1, GL_FALSE, &(projXf.x[0][0]));
+        // Create VBO for sphere
+        Sphere sphere(0.5, 8, 4);
         
         // Instanced positions
         
@@ -264,28 +245,22 @@ run()
         P0.unmap();
         P1.unmap();
         
-        GLint ptAttrib = glGetAttribLocation(shaderProgram, "pt");
+        // Centers
+        GLint centerAttrib = glGetAttribLocation(shaderProgram, "center");
         
         P1.bind();
-        glVertexAttribPointer(ptAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
-        glVertexAttribDivisorARB(ptAttrib, 1);
-        glEnableVertexAttribArray(ptAttrib);
+        glEnableVertexAttribArray(centerAttrib);
+        glVertexAttribPointer(centerAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
+        glVertexAttribDivisorARB(centerAttrib, 1);
         
-        // View
+        // Projection
         
-        Imath::M44f viewXf;
-        viewXf.makeIdentity();
-        viewXf.rotate(
-            Imath::V3f(toRadians(0.0), toRadians(0.0), toRadians(0.0)));
-        viewXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.0, 0.0));
+        Imath::Frustumf frustum(0.1, 1000.0, FOV, 0.0,
+                                float(WIDTH)/float(HEIGHT));
         
-        // Lights
+        Imath::M44f projXf = frustum.projectionMatrix();
         
-        Imath::V3f lightDir(-1.0, -1.0, -1.0);
-        lightDir *= viewXf;
-        lightDir.normalize();
-        
-        glUniform3f(uniLightDir, lightDir.x, lightDir.y, lightDir.z);
+        glUniformMatrix4fv(uniProjXf, 1, GL_FALSE, &(projXf.x[0][0]));
         
         glEnable(GL_DEPTH_TEST);
         
@@ -305,6 +280,17 @@ run()
                     break;
             }
 
+            
+            // View
+        
+            Imath::M44f viewXf;
+            viewXf.makeIdentity();
+            viewXf.rotate(
+                Imath::V3f(toRadians(0.0), toRadians(0.0), toRadians(0.0)));
+            viewXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.0, 0.0));
+            
+            // Model
+            
             GLfloat animRotY = (GLfloat(SDL_GetTicks()) / 1000.0) * 45.0;
         
             Imath::M44f modelXf;
@@ -313,17 +299,32 @@ run()
             modelXf.rotate(Imath::V3f(0.0, toRadians(animRotY), toRadians(animRotY)));
             modelXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.0, -2));
 
+            // ModelView
+            
             Imath::M44f modelViewXf = modelXf * viewXf.inverse();
 
+            glUniformMatrix4fv(uniModelViewXf, 1, GL_FALSE, &(modelViewXf.x[0][0]));
+            
+            // Normal transform
+            
             const float (*x)[4] = modelViewXf.x;
             Imath::M33f normalXf(   x[0][0], x[0][1], x[0][2],
                                     x[1][0], x[1][1], x[1][2],
                                     x[2][0], x[2][1], x[2][2]);
             normalXf.invert();
             normalXf.transpose();
-
-            glUniformMatrix4fv(uniModelViewXf, 1, GL_FALSE, &(modelViewXf.x[0][0]));
+            
             glUniformMatrix3fv(uniNormalXf, 1, GL_FALSE, &(normalXf.x[0][0]));
+            
+            // Lights
+        
+            Imath::V3f lightDir(-1.0, -1.0, -1.0);
+            lightDir *= viewXf;
+            lightDir.normalize();
+
+            glUniform3f(uniLightDir, lightDir.x, lightDir.y, lightDir.z);
+            
+            // Redraw
             
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             sphere.drawInstances(nPts);
