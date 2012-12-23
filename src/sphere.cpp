@@ -137,6 +137,9 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0)
     
 
     // Upload to graphics card
+    glGenVertexArrays(1, &m_vao);
+    glBindVertexArray(m_vao);
+    
     glGenBuffers(kBuffers, m_buffer);
     
     glBindBuffer(GL_ARRAY_BUFFER, m_buffer[kVertex]);
@@ -156,6 +159,15 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0)
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_buffer[kElement]);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)*nTriangles*3,
                     m_pElements, GL_STATIC_DRAW);
+    
+    glBindVertexArray(0);
+}
+
+
+void
+Sphere::bind()
+{
+    glBindVertexArray(m_vao);
 }
 
 

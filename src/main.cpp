@@ -248,6 +248,7 @@ run()
         // Centers
         GLint centerAttrib = glGetAttribLocation(shaderProgram, "center");
         
+        sphere.bind();
         P1.bind();
         glEnableVertexAttribArray(centerAttrib);
         glVertexAttribPointer(centerAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);

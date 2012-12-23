@@ -19,7 +19,7 @@ public:
     Sphere(GLfloat radius, unsigned subdivU, unsigned subdivV);
     virtual ~Sphere();
     
-    GLuint buffer(Buffer id) const {return m_buffer[id];}
+    void bind();
     
     void draw() const;
     void drawInstances(unsigned nPts) const;
@@ -33,6 +33,7 @@ protected:
     GLuint* m_pElements; /// Mesh connectivity
     unsigned m_nElements; /// Number of elements
     
+    GLuint m_vao; /// Vertex Array Object
     GLuint m_buffer[kBuffers]; // Buffers
 };
 
