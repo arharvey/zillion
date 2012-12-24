@@ -170,6 +170,8 @@ public:
         kModelViewXf,
         kModelViewNormalXf,
         kLightDirWorld,
+        kSurfaceColor0,
+        kSurfaceColor1,
         kNumUniforms
     };
     
@@ -213,7 +215,9 @@ const char* ParticleProgram::szUniforms[] = {
     "projectionXf",
     "modelViewXf",
     "normalXf",
-    "lightDirWorld"
+    "lightDirWorld",
+    "surfaceColor0",
+    "surfaceColor1" 
 };
 
 
@@ -357,7 +361,7 @@ run()
     {
         // Create VBO for sphere
         PlanePrimitive ground( Imath::Plane3f(Imath::V3f(0.0, 1.0, 0.0), 0.0));
-        SpherePrimitive dome(FAR-1.0f, 100, 50);
+        SpherePrimitive dome(FAR, 100, 50);
         SpherePrimitive sphere(0.5, 8, 4);
        
         // Instanced positions
@@ -418,10 +422,9 @@ run()
         domeProg.set(DomeProgram::kProjectionXf, projXf);
         domeProg.set(DomeProgram::kColor0, Imath::V3f(0, 0, 0));
         domeProg.set(DomeProgram::kColor1, Imath::V3f(0.5, 0.6, 1.0));
-        domeProg.set(DomeProgram::kColor0, Imath::V3f(0, 0, 0));
-        //domeProg.set(DomeProgram::kColor2, Imath::V3f(0.8, 0.8, 1.0));
+        domeProg.set(DomeProgram::kColor2, Imath::V3f(0, 0, 0));
         
-        glEnable(GL_DEPTH_TEST);
+        glCullFace(GL_BACK);
         
         unsigned nFrameCount = 0;
         Uint64 nStartTick = SDL_GetTicks();
@@ -496,6 +499,27 @@ run()
             
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             
+            // Sky dome
+
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_CULL_FACE); // Make sure we can see inside the sphere
+            
+            domeProg.use();
+
+            Imath::M44f domeViewXf = viewXf;
+            domeViewXf[3][0] = 0.0;
+            domeViewXf[3][1] = 0.0; 
+            domeViewXf[3][2] = 0.0;
+
+            domeProg.set(DomeProgram::kViewXf, domeViewXf);
+
+            dome.bind();
+            dome.draw();
+            dome.unbind();
+            
+            
+            glEnable(GL_DEPTH_TEST);
+            glEnable(GL_CULL_FACE);
             
             // Ground plane
             
@@ -511,21 +535,6 @@ run()
             ground.draw();
             ground.unbind();
               
-            // Sky dome
-
-            domeProg.use();
-
-            Imath::M44f domeViewXf = viewXf;
-            domeViewXf[3][0] = 0.0;
-            domeViewXf[3][1] = 0.0; 
-            domeViewXf[3][2] = 0.0;
-
-            domeProg.set(DomeProgram::kViewXf, domeViewXf);
-
-            dome.bind();
-            dome.draw();
-            dome.unbind();
-           
             // Particle system
             
             particleProg.use();
@@ -537,6 +546,8 @@ run()
             sphere.drawInstances(nPts);
             sphere.unbind();
             
+            glDisable(GL_DEPTH_TEST);
+            glDisable(GL_CULL_FACE);
             
             // Make visible
             

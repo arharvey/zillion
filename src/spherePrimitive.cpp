@@ -94,8 +94,8 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vao(0)
     for(unsigned u = 0; u < subdivU; u++)
     {
         i[0] = 0; // Bottom vertex
-        i[1] = start + (u+1)%subdivU;
-        i[2] = start + u;
+        i[1] = start + u;
+        i[2] = start + (u+1)%subdivU;
         
         //std::cout << i[0] << ", " << i[1] << ", " << i[2] << std::endl;
         
@@ -112,17 +112,17 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vao(0)
             const GLuint c = b + subdivU;
             const GLuint d = a + subdivU;
             
-            i[0] = a;
+            i[0] = c;
             i[1] = b;
-            i[2] = c;
+            i[2] = a;
             
             //std::cout << i[0] << ", " << i[1] << ", " << i[2] << std::endl;
             
             i += 3;
             
-            i[0] = a;
+            i[0] = d;
             i[1] = c;
-            i[2] = d;
+            i[2] = a;
             
             //std::cout << i[0] << ", " << i[1] << ", " << i[2] << std::endl;
             
@@ -134,8 +134,8 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vao(0)
     
     for(unsigned u = 0; u < subdivU; u++)
     {
-        i[0] = start + u;
-        i[1] = start + (u+1)%subdivU;
+        i[0] = start + (u+1)%subdivU;
+        i[1] = start + u;
         i[2] = nVertices-1; // Top vertex
         
         //std::cout << i[0] << ", " << i[1] << ", " << i[2] << std::endl;

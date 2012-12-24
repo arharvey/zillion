@@ -24,7 +24,7 @@ m_texture(0)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     
     // A black and white chequerboard
-    const GLfloat v0 = 0.8f, v1 = 0.9f;
+    const GLfloat v0 = 0.7f, v1 = 0.8f;
     
     float pixels[] =
     {
