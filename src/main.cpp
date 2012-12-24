@@ -15,8 +15,14 @@
 #include "program.h"
 #include "planePrimitive.h"
 #include "spherePrimitive.h"
+#include "camera.h"
 #include "sharedBuffer.h"
 #include "chequerTexture.h"
+
+const unsigned LEFT_BTN = 1;
+const unsigned MIDDLE_BTN = 2;
+const unsigned RIGHT_BTN = 4;
+
 
 void
 initGrid(float* Pd, const float* P0d, unsigned nPts);
@@ -429,6 +435,14 @@ run()
         unsigned nFrameCount = 0;
         Uint64 nStartTick = SDL_GetTicks();
         
+        TumbleCamera camera;
+        camera.setCenter(Imath::V3f(0.0, 0.5, 0.0));
+        camera.setDistance(2.0f);
+        camera.setAltitude(toRadians(30));
+        camera.setAzimuth(toRadians(30));
+        
+        unsigned mouseButton = 0;
+        
         SDL_Event windowEvent;
         while(true)
         {
@@ -437,24 +451,83 @@ run()
                 if(windowEvent.type == SDL_QUIT)
                     break;
 
-                if(windowEvent.type == SDL_KEYUP &&
-                    windowEvent.key.keysym.sym == SDLK_ESCAPE)
-                    break;
+                if(windowEvent.type == SDL_KEYUP)
+                {
+                    if(windowEvent.key.keysym.sym == SDLK_ESCAPE)
+                        break;
+                }
+                
+                if(windowEvent.type == SDL_MOUSEBUTTONDOWN)
+                {
+                    switch(windowEvent.button.button)
+                    {
+                        case SDL_BUTTON_LEFT:
+                            mouseButton |= LEFT_BTN;
+                            break;
+                            
+                        case SDL_BUTTON_MIDDLE:
+                            mouseButton |= MIDDLE_BTN;
+                            break;
+                            
+                        case SDL_BUTTON_RIGHT:
+                            mouseButton |= RIGHT_BTN;
+                            break;
+                    };
+                }
+                
+                if(windowEvent.type == SDL_MOUSEBUTTONUP)
+                {
+                    switch(windowEvent.button.button)
+                    {
+                        case SDL_BUTTON_LEFT:
+                            mouseButton &= ~LEFT_BTN;
+                            break;
+                            
+                        case SDL_BUTTON_MIDDLE:
+                            mouseButton &= ~MIDDLE_BTN;
+                            break;
+                            
+                        case SDL_BUTTON_RIGHT:
+                            mouseButton &= ~RIGHT_BTN;
+                            break;
+                            
+                    };
+                }
+                
+                if(windowEvent.type == SDL_MOUSEMOTION)
+                {
+                    
+                    if(windowEvent.motion.state == SDL_BUTTON(SDL_BUTTON_LEFT))
+                    {
+                        
+                        float altitudeDelta = float(windowEvent.motion.yrel) *
+                                                toRadians(10) / 50.0;
+                        
+                        float azimuthDelta = float(-windowEvent.motion.xrel) *
+                                                toRadians(10) / 50.0;
+                        
+                        camera.setAltitude(camera.altitude() + altitudeDelta);
+                        camera.setAzimuth(camera.azimuth() + azimuthDelta);
+                    }
+                    else
+                    if(windowEvent.motion.state == SDL_BUTTON(SDL_BUTTON_RIGHT))
+                    {
+                        float delta = float(windowEvent.motion.xrel)/100.0 * 0.25f;
+                        
+                        if(delta < 0.0)
+                            delta = 1.0-delta;
+                        else
+                            delta = 1.0/(1.0+delta);
+                        
+                        camera.scaleDistance(delta);
+                    }
+                            
+                }
             }
-
-            
-            // Camera
-        
-            Imath::M44f cameraXf;
-            cameraXf.makeIdentity();
-            cameraXf.rotate(
-                Imath::V3f(toRadians(0.0), toRadians(0.0), toRadians(0.0)));
-            cameraXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.5, 0.0));
-            
             
             // View
             
-            Imath::M44f viewXf = cameraXf.inverse();
+            Imath::M44f viewXf = camera.viewTransform();
             
             // View Normal transform
             
@@ -474,7 +547,7 @@ run()
             modelXf.makeIdentity();
             modelXf.scale(Imath::V3f(1.0, 1.0, 1.0));
             modelXf.rotate(Imath::V3f(0.0, toRadians(animRotY), toRadians(animRotY)));
-            modelXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.5, -2));
+            modelXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.5, 0));
 
             // ModelView
             
@@ -492,7 +565,7 @@ run()
             // Lights
         
             Imath::V3f lightDir(-1.0, -1.0, -1.0);
-            lightDir *= viewXf;
+            lightDir *= viewNormalXf;
             lightDir.normalize();
             
             // Start new frame
