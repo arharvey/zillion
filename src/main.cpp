@@ -16,6 +16,7 @@
 #include "planePrimitive.h"
 #include "spherePrimitive.h"
 #include "sharedBuffer.h"
+#include "chequerTexture.h"
 
 void
 initGrid(float* Pd, const float* P0d, unsigned nPts);
@@ -188,7 +189,9 @@ public:
         
         glBindAttribLocation(program, 0, "position");
         glBindAttribLocation(program, 1, "normal");
-        glBindAttribLocation(program, 2, "pt");
+        glBindAttribLocation(program, 2, "uv");
+        
+        glBindAttribLocation(program, 3, "center");
 
         if(!link(program, "particle"))
             return;
@@ -216,7 +219,7 @@ const char* ParticleProgram::szUniforms[] = {
 
 // ---------------------------------------------------------------------------
 
-class PlaneProgram : public Program
+class GroundProgram : public Program
 {
 public:
     enum Uniform
@@ -225,16 +228,16 @@ public:
         kViewXf,
         kViewNormalXf,
         kLightDirWorld,
-        kSurfaceColor,
+        kTex,
         kNumUniforms
     };
     
     static const char* szUniforms[kNumUniforms];
     
-    PlaneProgram(const std::string& strShaderDir):
+    GroundProgram(const std::string& strShaderDir):
     Program(kNumUniforms),
-    m_vertex((strShaderDir+"planeVertex.glsl").c_str(), GL_VERTEX_SHADER),
-    m_fragment((strShaderDir+"planeFragment.glsl").c_str(), GL_FRAGMENT_SHADER)
+    m_vertex((strShaderDir+"groundVertex.glsl").c_str(), GL_VERTEX_SHADER),
+    m_fragment((strShaderDir+"groundFragment.glsl").c_str(), GL_FRAGMENT_SHADER)
     {
         if(!m_vertex || !m_fragment)
             return;
@@ -247,7 +250,7 @@ public:
         glBindAttribLocation(program, 1, "normal");
         glBindAttribLocation(program, 2, "uv");
 
-        if(!link(program, "plane"))
+        if(!link(program, "ground"))
             return;
 
         // Program successfully linked
@@ -263,13 +266,72 @@ protected:
 };
 
 
-const char* PlaneProgram::szUniforms[] = {
+const char* GroundProgram::szUniforms[] = {
     "projectionXf",
     "viewXf",
     "normalXf",
     "lightDirWorld",
-    "surfaceColor"
+    "tex"
 };
+
+
+// ---------------------------------------------------------------------------
+
+class DomeProgram : public Program
+{
+public:
+    enum Uniform
+    {
+        kProjectionXf = 0,
+        kViewXf,
+        kColor0,
+        kColor1,
+        kColor2,
+        kNumUniforms
+    };
+    
+    static const char* szUniforms[kNumUniforms];
+    
+    DomeProgram(const std::string& strShaderDir):
+    Program(kNumUniforms),
+    m_vertex((strShaderDir+"domeVertex.glsl").c_str(), GL_VERTEX_SHADER),
+    m_fragment((strShaderDir+"domeFragment.glsl").c_str(), GL_FRAGMENT_SHADER)
+    {
+        if(!m_vertex || !m_fragment)
+            return;
+        
+        GLuint program = glCreateProgram();
+        glAttachShader(program, m_vertex.id());
+        glAttachShader(program, m_fragment.id());
+        
+        glBindAttribLocation(program, 0, "position");
+        glBindAttribLocation(program, 1, "normal");
+        glBindAttribLocation(program, 2, "uv");
+
+        if(!link(program, "dome"))
+            return;
+
+        // Program successfully linked
+        m_program = program;
+        
+        initUniformLocations(szUniforms, kNumUniforms);
+    }
+    
+    
+protected:
+    Shader m_vertex;
+    Shader m_fragment;
+};
+
+
+const char* DomeProgram::szUniforms[] = {
+    "projectionXf",
+    "viewXf",
+    "color0",
+    "color1",
+    "color2"
+};
+
 
 
 // ---------------------------------------------------------------------------
@@ -277,18 +339,25 @@ const char* PlaneProgram::szUniforms[] = {
 bool
 run()
 {
+    ChequerTexture chequerTex(2);
+    
     // Particle program
     ParticleProgram particleProg("/Users/andrewharvey/dev/zillion/src/");
     if(!particleProg)
         return false;
     
-    PlaneProgram planeProg("/Users/andrewharvey/dev/zillion/src/");
-    if(!planeProg)
+    GroundProgram groundProg("/Users/andrewharvey/dev/zillion/src/");
+    if(!groundProg)
+        return false;
+    
+    DomeProgram domeProg("/Users/andrewharvey/dev/zillion/src/");
+    if(!domeProg)
         return false;
     
     {
         // Create VBO for sphere
-        PlanePrimitive plane( Imath::Plane3f(Imath::V3f(0.0, 1.0, 0.0), 0.0));
+        PlanePrimitive ground( Imath::Plane3f(Imath::V3f(0.0, 1.0, 0.0), 0.0));
+        SpherePrimitive dome(FAR-1.0f, 100, 50);
         SpherePrimitive sphere(0.5, 8, 4);
        
         // Instanced positions
@@ -336,12 +405,21 @@ run()
         
         Imath::M44f projXf = frustum.projectionMatrix();
         
+        // Initialise shader programs
+        
         particleProg.use();
         particleProg.set(ParticleProgram::kProjectionXf, projXf);
         
-        planeProg.use();
-        planeProg.set(PlaneProgram::kProjectionXf, projXf);
-        planeProg.set(PlaneProgram::kSurfaceColor, Imath::V3f(1.0, 1.0, 1.0));
+        groundProg.use();
+        groundProg.set(GroundProgram::kProjectionXf, projXf);
+        groundProg.set(GroundProgram::kTex, 0);
+        
+        domeProg.use();
+        domeProg.set(DomeProgram::kProjectionXf, projXf);
+        domeProg.set(DomeProgram::kColor0, Imath::V3f(0, 0, 0));
+        domeProg.set(DomeProgram::kColor1, Imath::V3f(0.5, 0.6, 1.0));
+        domeProg.set(DomeProgram::kColor0, Imath::V3f(0, 0, 0));
+        //domeProg.set(DomeProgram::kColor2, Imath::V3f(0.8, 0.8, 1.0));
         
         glEnable(GL_DEPTH_TEST);
         
@@ -414,19 +492,41 @@ run()
             lightDir *= viewXf;
             lightDir.normalize();
             
-            // Redraw
+            // Start new frame
             
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
             
-            planeProg.use();
-            planeProg.set(PlaneProgram::kViewXf, viewXf);
-            planeProg.set(PlaneProgram::kViewNormalXf, viewNormalXf);
-            planeProg.set(PlaneProgram::kLightDirWorld, lightDir);
             
-            plane.update(viewXf * projXf, NEAR, FAR);
-            plane.bind();
-            plane.draw();
-            plane.unbind();
+            // Ground plane
+            
+            groundProg.use();
+            groundProg.set(GroundProgram::kViewXf, viewXf);
+            groundProg.set(GroundProgram::kViewNormalXf, viewNormalXf);
+            groundProg.set(GroundProgram::kLightDirWorld, lightDir);
+            
+            chequerTex.bind(0);
+            
+            ground.update(viewXf * projXf, NEAR, FAR);
+            ground.bind();
+            ground.draw();
+            ground.unbind();
+              
+            // Sky dome
+
+            domeProg.use();
+
+            Imath::M44f domeViewXf = viewXf;
+            domeViewXf[3][0] = 0.0;
+            domeViewXf[3][1] = 0.0; 
+            domeViewXf[3][2] = 0.0;
+
+            domeProg.set(DomeProgram::kViewXf, domeViewXf);
+
+            dome.bind();
+            dome.draw();
+            dome.unbind();
+           
+            // Particle system
             
             particleProg.use();
             particleProg.set(ParticleProgram::kModelViewXf, modelViewXf);
@@ -436,6 +536,9 @@ run()
             sphere.bind();
             sphere.drawInstances(nPts);
             sphere.unbind();
+            
+            
+            // Make visible
             
             SDL_GL_SwapBuffers();
             

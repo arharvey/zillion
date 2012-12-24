@@ -45,6 +45,13 @@ Program::set(unsigned n, const Imath::V3f& v) const
 }
 
 
+void
+Program::set(unsigned n, int i) const
+{
+    glUniform1i(m_pUniforms[n], i);
+}
+
+
 bool
 Program::link(GLuint program, const char* szName)
 {
@@ -70,5 +77,13 @@ void
 Program::initUniformLocations(const char** szUniforms, unsigned nNumUniforms)
 {
     for(unsigned n = 0; n < nNumUniforms; n++)
+    {
         m_pUniforms[n] = glGetUniformLocation(m_program, szUniforms[n]);
+        
+        if(m_pUniforms[n] == -1)
+        {
+            std::cerr << "Error: Unable to locate uniform variable '"
+                        << szUniforms[n] << "'" << std::endl;
+        }
+    }
 }

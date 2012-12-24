@@ -16,9 +16,9 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vao(0)
     assert(radius > 0.0);
     
     const unsigned nVertices = 2 + (subdivU * (subdivV-1));
-    const unsigned nComp = 6;
+    const unsigned nComp = 8; // 3 x position, 3 x normal, 2 x UV
     
-    // Calculate vertices
+    // Calculate vertices and UVs
     
     m_pVertices = new GLfloat[nVertices * nComp];
     
@@ -27,6 +27,9 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vao(0)
     vtx[0] = 0.0;
     vtx[1] = -m_radius;
     vtx[2] = 0.0;
+    
+    vtx[6] = 0.0; // UVs
+    vtx[7] = 0.0; //
     
     vtx += nComp;
     
@@ -47,6 +50,9 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vao(0)
             vtx[1] = y;
             vtx[2] = r * sin(theta);
             
+            vtx[6] = GLfloat(u)/GLfloat(m_subdivU);
+            vtx[7] = GLfloat(v)/GLfloat(m_subdivV);
+            
             vtx += nComp;
         }
     }
@@ -55,6 +61,8 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vao(0)
     vtx[1] = m_radius;
     vtx[2] = 0.0;
     
+    vtx[6] = 0.0;
+    vtx[7] = 1.0;
     
     // Since the sphere is centered on the origin, calculating normals is
     // trivial.
@@ -148,13 +156,17 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vao(0)
     
     
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE,
-                            6*sizeof(GLfloat), 0);
+                            nComp*sizeof(GLfloat), 0);
     glEnableVertexAttribArray(0); // Position attribute
     
     
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE,
-                            6*sizeof(GLfloat), (void*)(3*sizeof(GLfloat)) );
+                            nComp*sizeof(GLfloat), (void*)(3*sizeof(GLfloat)) );
     glEnableVertexAttribArray(1); // Normal attribute
+    
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE,
+                            nComp*sizeof(GLfloat), (void*)(6*sizeof(GLfloat)) );
+    glEnableVertexAttribArray(2); // UV attribute
     
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_buffer[kElement]);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)*nTriangles*3,
@@ -187,7 +199,9 @@ SpherePrimitive::unbind() const
 void
 SpherePrimitive::draw() const
 {
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_buffer[kElement]);
     glDrawElements(GL_TRIANGLES, m_nElements, GL_UNSIGNED_INT, 0);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 }
 
 
