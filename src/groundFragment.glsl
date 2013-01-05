@@ -1,10 +1,12 @@
-#version 120
+#version 150
 
 uniform vec3 surfaceColor;
 uniform sampler2D tex;
 
-varying float outIntensity;
-varying vec2 outUV;
+in float outIntensity;
+in vec2 outUV;
+
+out vec4 outColor;
 
 void main ()
 {
@@ -15,5 +17,5 @@ void main ()
     if(uvColor.y < 0.0)
         uvColor.y = 1.0 + uvColor.y;
 
-    gl_FragColor = vec4(outIntensity * texture2D(tex, uvColor.st).rgb, 1);
+    outColor = vec4(outIntensity * texture(tex, uvColor.st).rgb, 1);
 }

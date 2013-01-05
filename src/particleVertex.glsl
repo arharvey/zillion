@@ -1,4 +1,4 @@
-#version 120
+#version 150
 
 uniform float scale;
 
@@ -8,13 +8,13 @@ uniform mat3 normalXf;
 
 uniform vec3 lightDirWorld;
 
-attribute vec3 normal;
-attribute vec3 position;
-attribute vec2 uv;
-attribute vec3 center;
+in vec3 normal;
+in vec3 position;
+in vec2 uv;
+in vec3 center;
 
-varying float outIntensity;
-varying vec2 outUV;
+out float outIntensity;
+out vec2 outUV;
 
 void main()
 {

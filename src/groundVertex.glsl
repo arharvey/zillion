@@ -1,16 +1,16 @@
-#version 120
+#version 150
 
 uniform mat4 projectionXf;
 uniform mat4 viewXf;
 uniform mat3 normalXf;
 uniform vec3 lightDirWorld;
 
-attribute vec3 position;
-attribute vec3 normal;
-attribute vec2 uv;
+in vec3 position;
+in vec3 normal;
+in vec2 uv;
 
-varying float outIntensity;
-varying vec2 outUV;
+out float outIntensity;
+out vec2 outUV;
 
 void main ()
 {

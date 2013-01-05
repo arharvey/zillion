@@ -20,7 +20,7 @@ PlanePrimitive::init(const Imath::V3f& uDir)
 {
     glGetError(); // Reset
     
-    glGenVertexArraysAPPLE(1, &m_vao);
+    glGenVertexArrays(1, &m_vao);
     GLenum error = glGetError();
     if(error != GL_NO_ERROR)
     {
@@ -28,7 +28,7 @@ PlanePrimitive::init(const Imath::V3f& uDir)
     }
     
     
-    glBindVertexArrayAPPLE(m_vao);
+    glBindVertexArray(m_vao);
     
     glGenBuffers(kNumBuffers, m_buffer);
     
@@ -49,7 +49,7 @@ PlanePrimitive::init(const Imath::V3f& uDir)
     glEnableVertexAttribArray(2); // UV attribute
     
     glBindBuffer(GL_ARRAY_BUFFER,0);
-    glBindVertexArrayAPPLE(0);
+    glBindVertexArray(0);
     
     const Imath::V3f& n = m_plane.normal;
     
@@ -131,7 +131,7 @@ PlanePrimitive::update(const Imath::M44f& Mf, float near, float far)
     }
     
     //std::cout << std::endl;
-    glBindVertexArrayAPPLE(m_vao);
+    glBindVertexArray(m_vao);
     
     glBindBuffer(GL_ARRAY_BUFFER, m_buffer[kPosition]);
     glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*nVertices*3,
@@ -146,21 +146,21 @@ PlanePrimitive::update(const Imath::M44f& Mf, float near, float far)
                     uvs, GL_DYNAMIC_DRAW);
     
     glBindBuffer(GL_ARRAY_BUFFER,0);
-    glBindVertexArrayAPPLE(0);
+    glBindVertexArray(0);
 }
 
 
 void
 PlanePrimitive::bind() const
 {
-    glBindVertexArrayAPPLE(m_vao);
+    glBindVertexArray(m_vao);
 }
 
 
 void
 PlanePrimitive::unbind() const
 {
-    glBindVertexArrayAPPLE(0);
+    glBindVertexArray(0);
 }
 
 

@@ -18,9 +18,9 @@ find_package (GLEW REQUIRED)
 include_directories (${GLEW_INCLUDE_DIR})
 target_link_libraries (zillion ${GLEW_LIBRARY})
 
-find_package (SDL REQUIRED)
-include_directories (${SDL_INCLUDE_DIR})
-target_link_libraries (zillion ${SDL_LIBRARY})
+find_package (GLFW REQUIRED)
+include_directories (${GLFW_INCLUDE_DIR})
+target_link_libraries (zillion ${GLFW_LIBRARIES})
 
 # Do not need IlmThread
 set (ILMBASE_CUSTOM TRUE)

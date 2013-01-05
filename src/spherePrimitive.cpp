@@ -145,8 +145,8 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vao(0)
     
 
     // Upload to graphics card
-    glGenVertexArraysAPPLE(1, &m_vao);
-    glBindVertexArrayAPPLE(m_vao);
+    glGenVertexArrays(1, &m_vao);
+    glBindVertexArray(m_vao);
     
     glGenBuffers(kBuffers, m_buffer);
     
@@ -174,7 +174,7 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vao(0)
     
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    glBindVertexArrayAPPLE(0);
+    glBindVertexArray(0);
     
     delete [] m_pElements;
     delete [] m_pVertices;
@@ -184,7 +184,7 @@ m_pVertices(NULL), m_pElements(NULL), m_nElements(0), m_vao(0)
 void
 SpherePrimitive::bind() const
 {
-    glBindVertexArrayAPPLE(m_vao);
+    glBindVertexArray(m_vao);
     
 }
 
@@ -192,7 +192,7 @@ SpherePrimitive::bind() const
 void
 SpherePrimitive::unbind() const
 {
-    glBindVertexArrayAPPLE(0);
+    glBindVertexArray(0);
 }
 
 
@@ -219,7 +219,7 @@ SpherePrimitive::drawInstances(unsigned nPts) const
 SpherePrimitive::~SpherePrimitive()
 {
     glDeleteBuffers( kBuffers, m_buffer );
-    glDeleteVertexArraysAPPLE(1, &m_vao);
+    glDeleteVertexArrays(1, &m_vao);
 }
 
 

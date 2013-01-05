@@ -5,7 +5,7 @@
 #include <OpenEXR/ImathFrustum.h>
 
 #include <GL/glew.h>
-#include "SDL.h"
+#include <GL/glfw.h>
 
 #include <cuda_runtime.h>
 
@@ -200,6 +200,8 @@ public:
         
         glBindAttribLocation(program, 3, "center");
 
+        glBindFragDataLocation(program, 0, "outColor" );
+        
         if(!link(program, "particle"))
             return;
 
@@ -260,6 +262,8 @@ public:
         glBindAttribLocation(program, 1, "normal");
         glBindAttribLocation(program, 2, "uv");
 
+        glBindFragDataLocation(program, 0, "outColor" );
+        
         if(!link(program, "ground"))
             return;
 
@@ -318,6 +322,8 @@ public:
         glBindAttribLocation(program, 1, "normal");
         glBindAttribLocation(program, 2, "uv");
 
+        glBindFragDataLocation(program, 0, "outColor" );
+        
         if(!link(program, "dome"))
             return;
 
@@ -345,6 +351,70 @@ const char* DomeProgram::szUniforms[] = {
 
 
 // ---------------------------------------------------------------------------
+
+
+unsigned g_mouseButtons = 0;
+int g_mouseX = 0, g_mouseY = 0, g_mousePrevX = 0, g_mousePrevY = 0;
+int g_mouseRelativeX = 0, g_mouseRelativeY = 0;
+bool g_bMouseMoved = false;
+
+void GLFWCALL
+onMouseButtonPressed(int button, int action)
+{
+    switch(button)
+    {
+        case GLFW_MOUSE_BUTTON_LEFT:
+        {
+            if(action == GLFW_PRESS)
+                g_mouseButtons |= LEFT_BTN;
+            else
+                g_mouseButtons &= ~LEFT_BTN;
+            
+            break;
+        }
+            
+        
+        case GLFW_MOUSE_BUTTON_RIGHT:
+        {
+            if(action == GLFW_PRESS)
+                g_mouseButtons |= RIGHT_BTN;
+            else
+                g_mouseButtons &= ~RIGHT_BTN;
+            
+            break;
+        }
+    }
+}
+
+
+void GLFWCALL 
+onMouseMoved(int x, int y)
+{
+    g_mousePrevX = g_mouseX;
+    g_mousePrevY = g_mouseY;
+    
+    g_mouseX = x;
+    g_mouseY = y;
+    
+    g_mouseRelativeX = g_mouseX - g_mousePrevX;
+    g_mouseRelativeY = g_mouseY - g_mousePrevY;
+    
+    g_bMouseMoved = true;
+}
+
+
+void
+init()
+{    
+    glfwGetMousePos(&g_mousePrevX, &g_mousePrevY);
+    g_mouseX = g_mousePrevX;
+    g_mouseY = g_mousePrevY;
+
+    glfwSetMousePosCallback(onMouseMoved);
+    
+    glfwSetMouseButtonCallback(onMouseButtonPressed);
+}
+
 
 bool
 run()
@@ -398,25 +468,16 @@ run()
         glVertexAttribDivisorARB(centerAttrib, 1);
         sphere.unbind();
         
-        // Projection
-        
-        Imath::Frustumf frustum(NEAR, FAR, FOV, 0.0,
-                                float(WIDTH)/float(HEIGHT));
-        
-        Imath::M44f projXf = frustum.projectionMatrix();
         
         // Initialise shader programs
         
         particleProg.use();
-        particleProg.set(ParticleProgram::kProjectionXf, projXf);
         particleProg.set(ParticleProgram::kScale, particleRadius);
         
         groundProg.use();
-        groundProg.set(GroundProgram::kProjectionXf, projXf);
         groundProg.set(GroundProgram::kTex, 0);
         
         domeProg.use();
-        domeProg.set(DomeProgram::kProjectionXf, projXf);
         domeProg.set(DomeProgram::kColor0, Imath::V3f(0, 0, 0));
         domeProg.set(DomeProgram::kColor1, Imath::V3f(0.5, 0.6, 1.0));
         domeProg.set(DomeProgram::kColor2, Imath::V3f(0, 0, 0));
@@ -424,7 +485,7 @@ run()
         glCullFace(GL_BACK);
         
         unsigned nFrameCount = 0;
-        Uint64 nStartTick = SDL_GetTicks();
+        double startTime = glfwGetTime();
         
         TumbleCamera camera;
         camera.setCenter(Imath::V3f(0.0, 0.5, 0.0));
@@ -432,89 +493,73 @@ run()
         camera.setAltitude(toRadians(0));
         camera.setAzimuth(toRadians(0));
         
-        unsigned mouseButton = 0;
-        
-        SDL_Event windowEvent;
-        while(true)
+        int windowWidth = WIDTH, windowHeight = HEIGHT;
+        while( glfwGetWindowParam(GLFW_OPENED) )
         {
-            if(SDL_PollEvent(&windowEvent))
+            int currentWindowWidth = 0, currentWindowHeight = 0;
+            glfwGetWindowSize(&currentWindowWidth, &currentWindowHeight);
+            
+            if(currentWindowWidth != windowWidth ||
+                    currentWindowHeight != windowHeight)
             {
-                if(windowEvent.type == SDL_QUIT)
-                    break;
+                windowWidth = currentWindowWidth;
+                windowHeight = currentWindowHeight;
 
-                if(windowEvent.type == SDL_KEYUP)
-                {
-                    if(windowEvent.key.keysym.sym == SDLK_ESCAPE)
-                        break;
-                }
-                
-                if(windowEvent.type == SDL_MOUSEBUTTONDOWN)
-                {
-                    switch(windowEvent.button.button)
-                    {
-                        case SDL_BUTTON_LEFT:
-                            mouseButton |= LEFT_BTN;
-                            break;
-                            
-                        case SDL_BUTTON_MIDDLE:
-                            mouseButton |= MIDDLE_BTN;
-                            break;
-                            
-                        case SDL_BUTTON_RIGHT:
-                            mouseButton |= RIGHT_BTN;
-                            break;
-                    };
-                }
-                
-                if(windowEvent.type == SDL_MOUSEBUTTONUP)
-                {
-                    switch(windowEvent.button.button)
-                    {
-                        case SDL_BUTTON_LEFT:
-                            mouseButton &= ~LEFT_BTN;
-                            break;
-                            
-                        case SDL_BUTTON_MIDDLE:
-                            mouseButton &= ~MIDDLE_BTN;
-                            break;
-                            
-                        case SDL_BUTTON_RIGHT:
-                            mouseButton &= ~RIGHT_BTN;
-                            break;
-                            
-                    };
-                }
-                
-                if(windowEvent.type == SDL_MOUSEMOTION)
-                {
-                    
-                    if(windowEvent.motion.state == SDL_BUTTON(SDL_BUTTON_LEFT))
-                    {
-                        
-                        float altitudeDelta = float(windowEvent.motion.yrel) *
-                                                toRadians(10) / 50.0;
-                        
-                        float azimuthDelta = float(-windowEvent.motion.xrel) *
-                                                toRadians(10) / 50.0;
-                        
-                        camera.setAltitude(camera.altitude() + altitudeDelta);
-                        camera.setAzimuth(camera.azimuth() + azimuthDelta);
-                    }
-                    else
-                    if(windowEvent.motion.state == SDL_BUTTON(SDL_BUTTON_RIGHT))
-                    {
-                        float delta = float(windowEvent.motion.xrel)/100.0 * 0.25f;
-                        
-                        if(delta < 0.0)
-                            delta = 1.0-delta;
-                        else
-                            delta = 1.0/(1.0+delta);
-                        
-                        camera.scaleDistance(delta);
-                    }
-                            
-                }
+                glfwSetWindowSize(windowWidth, windowHeight);
+                glViewport(0, 0, windowWidth, windowHeight);
             }
+                
+            if(glfwGetKey(GLFW_KEY_ESC) == GLFW_PRESS)
+                    break;
+             
+       
+            if(g_bMouseMoved)
+            {
+                if(g_mouseButtons & LEFT_BTN)
+                {
+
+                    float altitudeDelta = float(g_mouseRelativeY) *
+                                            toRadians(10) / 50.0;
+
+                    float azimuthDelta = float(-g_mouseRelativeX) *
+                                            toRadians(10) / 50.0;
+
+                    camera.setAltitude(camera.altitude() + altitudeDelta);
+                    camera.setAzimuth(camera.azimuth() + azimuthDelta);
+                }
+                else
+                if(g_mouseButtons & RIGHT_BTN)
+                {
+                    float delta = float(g_mouseRelativeX)/100.0 * 0.25f;
+
+                    if(delta < 0.0)
+                        delta = 1.0-delta;
+                    else
+                        delta = 1.0/(1.0+delta);
+
+                    camera.scaleDistance(delta);
+                }
+                
+                g_bMouseMoved = false;
+            }
+            
+            
+            // Update projection
+        
+            Imath::Frustumf frustum(NEAR, FAR, FOV, 0.0,
+                                    float(windowWidth)/float(windowHeight));
+
+            Imath::M44f projXf = frustum.projectionMatrix();
+            
+            particleProg.use();
+            particleProg.set(ParticleProgram::kProjectionXf, projXf);
+
+            groundProg.use();
+            groundProg.set(GroundProgram::kProjectionXf, projXf);
+
+            domeProg.use();
+            domeProg.set(DomeProgram::kProjectionXf, projXf);
+        
             
             // View
             
@@ -563,13 +608,14 @@ run()
             glDisable(GL_DEPTH_TEST);
             glDisable(GL_CULL_FACE); // Make sure we can see inside the sphere
             
-            domeProg.use();
+            
 
             Imath::M44f domeViewXf = viewXf;
             domeViewXf[3][0] = 0.0;
             domeViewXf[3][1] = 0.0; 
             domeViewXf[3][2] = 0.0;
 
+            domeProg.use();
             domeProg.set(DomeProgram::kViewXf, domeViewXf);
 
             dome.bind();
@@ -610,15 +656,15 @@ run()
             
             // Make visible
             
-            SDL_GL_SwapBuffers();
+            glfwSwapBuffers();
             
             nFrameCount++;
         }
         
         if(nFrameCount > 0)
         {
-            Uint64 nTicks = SDL_GetTicks() - nStartTick;
-            float fps = float(nFrameCount) / (float(nTicks) / 1000.0);
+            double elapsed = glfwGetTime() - startTime;
+            double fps = double(nFrameCount) / elapsed;
             
             std::cout << "Speed: " << fps << " fps" << std::endl;
         }
@@ -639,23 +685,23 @@ main(int argc, char* argv[])
     if(!Zillion::initCUDA())
         return 1;
     
-	SDL_Init(SDL_INIT_TIMER | SDL_INIT_VIDEO);
+	glfwInit();
 
-    // Disable vertical sync. Warning: SDL_GL_SWAP_CONTROL is deprecated
-    SDL_GL_SetAttribute( SDL_GL_SWAP_CONTROL, 0 );
+    glfwOpenWindowHint( GLFW_OPENGL_VERSION_MAJOR, 3 );
+    glfwOpenWindowHint( GLFW_OPENGL_VERSION_MINOR, 2 );
+    glfwOpenWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
     
-	SDL_Surface* pSurface = SDL_SetVideoMode(
-								Zillion::WIDTH, Zillion::HEIGHT, 32,
-								SDL_HWSURFACE | SDL_DOUBLEBUF | SDL_OPENGL);
-     
-	SDL_WM_SetCaption("Zillion", 0);
-
+    glfwOpenWindow( Zillion::WIDTH, Zillion::HEIGHT, 0, 0, 0, 0, 32, 0, GLFW_WINDOW );
+    glfwSetWindowTitle( "Zillion" );
+    glfwSwapInterval(0);
+    
 	glewExperimental = GL_TRUE;
 	glewInit();
 
+    Zillion::init();
     bool status = Zillion::run();
 
-	SDL_Quit();
+	glfwTerminate();
 
 	return status ? 0 : 1;
 }
