@@ -9,7 +9,7 @@ initGridKernel(float* Pd, const float* P0d, unsigned nPts)
         float* pt = &Pd[n*3];
 
         pt[0] = pt0[0];
-        pt[1] = pt0[1] + 0.2f;
+        pt[1] = pt0[1];
         pt[2] = pt0[2];
         
         n += blockDim.x * gridDim.x;

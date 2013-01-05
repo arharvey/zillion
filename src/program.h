@@ -20,6 +20,7 @@ public:
     void set(unsigned n, const Imath::M44f& M) const;
     void set(unsigned n, const Imath::M33f& M) const;
     void set(unsigned n, const Imath::V3f& v) const;
+    void set(unsigned n, float f) const;
     void set(unsigned n, int i) const;
     
     

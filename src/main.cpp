@@ -8,7 +8,6 @@
 #include "SDL.h"
 
 #include <cuda_runtime.h>
-#include <cuda_gl_interop.h>
 
 #include "constants.h"
 #include "shader.h"
@@ -16,36 +15,35 @@
 #include "planePrimitive.h"
 #include "spherePrimitive.h"
 #include "camera.h"
-#include "sharedBuffer.h"
 #include "chequerTexture.h"
+
+#include "simulationCUDA.h"
 
 const unsigned LEFT_BTN = 1;
 const unsigned MIDDLE_BTN = 2;
 const unsigned RIGHT_BTN = 4;
 
 
-void
-initGrid(float* Pd, const float* P0d, unsigned nPts);
-
 namespace Zillion {
 
 int g_cudaDevice = 0;
-    
+   
+
 void
-gridPts(GLfloat* pPts, unsigned nDim, GLfloat size)
+gridPts(float* pPts, float nDim, GLfloat cellSize, const Imath::V3f offset)
 {
-    const GLfloat _DIM = 1.0/GLfloat(nDim);
+    const float _DIM = 1.0/float(nDim);
     
-    GLfloat* pt = pPts;
+    float* pt = pPts;
     for(unsigned k = 0; k < nDim; k++)
     {
         for(unsigned j = 0; j < nDim; j++)
         {
             for(unsigned i = 0; i < nDim; i++)
             {
-                pt[0] = (((GLfloat(i)+.5)*_DIM) - 0.5) * size;
-                pt[1] = (((GLfloat(j)+.5)*_DIM) - 0.5) * size;
-                pt[2] = (((GLfloat(k)+.5)*_DIM) - 0.5) * size;
+                pt[0] = (((float(i)+.5)*_DIM) - 0.5) * cellSize + offset.x;
+                pt[1] = (((float(j)+.5)*_DIM) - 0.5) * cellSize + offset.y;
+                pt[2] = (((float(k)+.5)*_DIM) - 0.5) * cellSize + offset.z;
 
                 pt += 3;
             }
@@ -172,7 +170,8 @@ class ParticleProgram : public Program
 public:
     enum Uniform
     {
-        kProjectionXf = 0,
+        kScale = 0,
+        kProjectionXf,
         kModelViewXf,
         kModelViewNormalXf,
         kLightDirWorld,
@@ -218,6 +217,7 @@ protected:
 
 
 const char* ParticleProgram::szUniforms[] = {
+    "scale",
     "projectionXf",
     "modelViewXf",
     "normalXf",
@@ -365,44 +365,34 @@ run()
         return false;
     
     {
+        const unsigned nDimNum = GRID_DIM;
+        const float gridSize = GRID_SIZE;
+        const float cellSize = gridSize / float(nDimNum);
+        const float particleRadius = cellSize * 0.5 *
+                                     PARTICLE_SIZE_RELATIVE_TO_GRID_CELL;
+        
         // Create VBO for sphere
         PlanePrimitive ground( Imath::Plane3f(Imath::V3f(0.0, 1.0, 0.0), 0.0));
         SpherePrimitive dome(FAR, 100, 50);
-        SpherePrimitive sphere(0.5, 8, 4);
+        SpherePrimitive sphere(1.0, 8, 4);
        
-        // Instanced positions
-        
-        const unsigned nDimNum = 20;
-        const GLfloat size = 1.0;
-        
-        const unsigned nPts = nDimNum*nDimNum*nDimNum;
-        std::cout << "Instancing " << nPts << " objects" << std::endl;
+        // Initialize simulation
+        const unsigned nParticles = nDimNum*nDimNum*nDimNum;
+        std::cout << "Instancing " << nParticles << " objects" << std::endl;
          
-        const unsigned sizeP = nPts*3*sizeof(float);
+        float* Pinit = new float[nParticles*3];
+        gridPts(Pinit, nDimNum, 1.0, Imath::V3f(0.0, 0.75, 0.0));
         
-        GLfloat* Pinit = new GLfloat[nPts*3];
-        gridPts(Pinit, nDimNum, size);
+        SimulationCUDA sim(Pinit, nParticles, particleRadius);
         
-        // Instanced positions (using CUDA)
-        
-        SharedBuffer P0(GL_ARRAY_BUFFER, nPts*3, GL_DYNAMIC_DRAW);
-        SharedBuffer P1(GL_ARRAY_BUFFER, nPts*3, GL_DYNAMIC_DRAW);
-        
-        P0.map();
-        P1.map();
-        
-        cudaMemcpy(P0, Pinit, sizeP, cudaMemcpyHostToDevice);
-        initGrid(P1, P0, nPts);
-        
-        P0.unmap();
-        P1.unmap();
+        delete [] Pinit;
          
         // Centers
         GLint centerAttrib = glGetAttribLocation(particleProg, "center");
       
         sphere.bind();
-        P1.bind();
-
+        sim.P(1).bind();
+        
         glEnableVertexAttribArray(centerAttrib);
         glVertexAttribPointer(centerAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
         glVertexAttribDivisorARB(centerAttrib, 1);
@@ -419,6 +409,7 @@ run()
         
         particleProg.use();
         particleProg.set(ParticleProgram::kProjectionXf, projXf);
+        particleProg.set(ParticleProgram::kScale, particleRadius);
         
         groundProg.use();
         groundProg.set(GroundProgram::kProjectionXf, projXf);
@@ -437,9 +428,9 @@ run()
         
         TumbleCamera camera;
         camera.setCenter(Imath::V3f(0.0, 0.5, 0.0));
-        camera.setDistance(2.0f);
-        camera.setAltitude(toRadians(30));
-        camera.setAzimuth(toRadians(30));
+        camera.setDistance(3.0f);
+        camera.setAltitude(toRadians(0));
+        camera.setAzimuth(toRadians(0));
         
         unsigned mouseButton = 0;
         
@@ -541,14 +532,9 @@ run()
             
             // Model
             
-            GLfloat animRotY = (GLfloat(SDL_GetTicks()) / 1000.0) * 45.0;
-        
             Imath::M44f modelXf;
             modelXf.makeIdentity();
-            modelXf.scale(Imath::V3f(1.0, 1.0, 1.0));
-            modelXf.rotate(Imath::V3f(0.0, toRadians(animRotY), toRadians(animRotY)));
-            modelXf *= Imath::M44f(Imath::M33f(), Imath::V3f(0.0, 0.5, 0));
-
+            
             // ModelView
             
             Imath::M44f modelViewXf = modelXf * viewXf;
@@ -616,7 +602,7 @@ run()
             particleProg.set(ParticleProgram::kLightDirWorld, lightDir);
             
             sphere.bind();
-            sphere.drawInstances(nPts);
+            sphere.drawInstances(nParticles);
             sphere.unbind();
             
             glDisable(GL_DEPTH_TEST);

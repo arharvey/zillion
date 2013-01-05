@@ -46,6 +46,13 @@ Program::set(unsigned n, const Imath::V3f& v) const
 
 
 void
+Program::set(unsigned n, GLfloat v) const
+{
+    glUniform1f(m_pUniforms[n], v);
+}
+
+
+void
 Program::set(unsigned n, int i) const
 {
     glUniform1i(m_pUniforms[n], i);
