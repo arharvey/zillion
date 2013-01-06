@@ -18,7 +18,7 @@ const unsigned HEIGHT = 768;
     
 const float FOV = toRadians(60.0);
     
-const float GRAVITY = -1;
+const float GRAVITY = -4;
 const float MASS = 1;
 const float RESTITUTION = 0.8;
     

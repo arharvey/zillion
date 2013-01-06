@@ -92,6 +92,21 @@ operator+=(float3& a, const float3& b)
 inline
 __host__
 __device__
+float3
+operator-(const float3& a, const float3& b)
+{
+    float3 v;
+    v.x = a.x-b.x;
+    v.y = a.y-b.y;
+    v.z = a.z-b.z;
+    
+    return v;
+}
+
+
+inline
+__host__
+__device__
 float3&
 operator-=(float3& a, const float3& b)
 {
@@ -224,11 +239,23 @@ handlePlaneCollisionsKernel(float* Pd, float* Vd, const float* P0d,
         
         const float3 plane = make_float3(0.0f, 1.0f, 0.0f);
         const float d = 0.0f;
-        if((plane ^ P) < d+r)
+        
+        const float distanceFromPlane = (plane ^ P) - d - r;
+        
+        // Have we collided with the plane?
+        if(distanceFromPlane <= 1e-6f)
         {
-            // Find point of collision with plane
-            float3 Vp = (V ^ plane) * plane;
-            V -= Vp*(1.0f + Cr);
+            const float perpSpeed = (V ^ plane);
+            
+            const float3 Vp = perpSpeed * plane;
+            const float3 Vt = V-Vp;
+            
+            // Bounce or contact?
+            V = Vt;
+            if(perpSpeed < -0.05f)
+                V -= Vp*Cr;
+            else
+                V *= (1.0f - 0.8*dt);
             
             P.y = r;
         }
