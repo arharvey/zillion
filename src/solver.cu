@@ -255,7 +255,7 @@ handlePlaneCollisionsKernel(float* Pd, float* Vd, const float* P0d,
             if(perpSpeed < -0.05f)
                 V -= Vp*Cr;
             else
-                V *= (1.0f - 0.8*dt);
+                V *= (1.0f - 0.5f*dt);
             
             P.y = r;
         }
