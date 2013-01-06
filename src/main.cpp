@@ -29,9 +29,20 @@ namespace Zillion {
 int g_cudaDevice = 0;
    
 
-void
-gridPts(float* pPts, float nDim, GLfloat cellSize, const Imath::V3f offset)
+inline
+float
+frand()
 {
+    return float(rand()) / float(RAND_MAX);
+}
+
+
+void
+initPositions(float* pPts, float nDim, GLfloat cellSize, const Imath::V3f offset,
+              const float jitter)
+{
+    srand(17);
+    
     const float _DIM = 1.0/float(nDim);
     
     float* pt = pPts;
@@ -41,9 +52,10 @@ gridPts(float* pPts, float nDim, GLfloat cellSize, const Imath::V3f offset)
         {
             for(unsigned i = 0; i < nDim; i++)
             {
-                pt[0] = (((float(i)+.5)*_DIM) - 0.5) * cellSize + offset.x;
-                pt[1] = (((float(j)+.5)*_DIM) - 0.5) * cellSize + offset.y;
-                pt[2] = (((float(k)+.5)*_DIM) - 0.5) * cellSize + offset.z;
+                
+                pt[0] = (((float(i)+.5+frand()*jitter)*_DIM) - 0.5) * cellSize + offset.x;
+                pt[1] = (((float(j)+.5+frand()*jitter)*_DIM) - 0.5) * cellSize + offset.y;
+                pt[2] = (((float(k)+.5+frand()*jitter)*_DIM) - 0.5) * cellSize + offset.z;
 
                 pt += 3;
             }
@@ -51,6 +63,23 @@ gridPts(float* pPts, float nDim, GLfloat cellSize, const Imath::V3f offset)
     }
 }
 
+
+void
+initVelocities(float* pVel, const float* pPts, unsigned N, float scale, const Imath::V3f& center)
+{
+    for(unsigned n = 0; n < N; n++)
+    {
+        const float* P = &pPts[n*3];
+        Imath::V3f vel = Imath::V3f(P[0], P[1], P[2]) - center;
+        vel.normalize();
+        vel *= scale;
+        
+        float* V = &pVel[n*3];
+        V[0] = vel.x;
+        V[1] = vel.y;
+        V[2] = vel.z;
+    }
+}
 
 // ---------------------------------------------------------------------------
 
@@ -444,30 +473,22 @@ run()
         // Create VBO for sphere
         PlanePrimitive ground( Imath::Plane3f(Imath::V3f(0.0, 1.0, 0.0), 0.0));
         SpherePrimitive dome(FAR, 100, 50);
-        SpherePrimitive sphere(1.0, 8, 4);
+        SpherePrimitive sphere(1.0, 12, 6);
        
         // Initialize simulation
         const unsigned nParticles = nDimNum*nDimNum*nDimNum;
         std::cout << "Instancing " << nParticles << " objects" << std::endl;
          
         float* Pinit = new float[nParticles*3];
-        gridPts(Pinit, nDimNum, 1.0, Imath::V3f(0.0, 0.75, 0.0));
+        initPositions(Pinit, nDimNum, 1.0, Imath::V3f(0.0, 0.75, 0.0), 0.8);
         
-        SimulationCUDA sim(Pinit, nParticles, particleRadius);
+        float* Vinit = new float[nParticles*3];
+        initVelocities(Vinit, Pinit, nParticles, 0.8, Imath::V3f(0.0, 0.0, 0.0));
         
+        SimulationCUDA sim(g_cudaDevice, Pinit, Vinit, nParticles, particleRadius);
+        
+        delete [] Vinit;
         delete [] Pinit;
-         
-        // Centers
-        GLint centerAttrib = glGetAttribLocation(particleProg, "center");
-      
-        sphere.bind();
-        sim.P(1).bind();
-        
-        glEnableVertexAttribArray(centerAttrib);
-        glVertexAttribPointer(centerAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
-        glVertexAttribDivisorARB(centerAttrib, 1);
-        sphere.unbind();
-        
         
         // Initialise shader programs
         
@@ -486,6 +507,7 @@ run()
         
         unsigned nFrameCount = 0;
         double startTime = glfwGetTime();
+        double prevTime = startTime;
         
         TumbleCamera camera;
         camera.setCenter(Imath::V3f(0.0, 0.5, 0.0));
@@ -648,6 +670,13 @@ run()
             particleProg.set(ParticleProgram::kLightDirWorld, lightDir);
             
             sphere.bind();
+            
+            sim.P().bind(); // Particle positions
+            GLint centerAttrib = glGetAttribLocation(particleProg, "center");
+            glEnableVertexAttribArray(centerAttrib);
+            glVertexAttribPointer(centerAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
+            glVertexAttribDivisorARB(centerAttrib, 1);
+            
             sphere.drawInstances(nParticles);
             sphere.unbind();
             
@@ -657,6 +686,12 @@ run()
             // Make visible
             
             glfwSwapBuffers();
+            
+            // Step the simulation forward
+            const double currentTime = glfwGetTime();
+            const double dt = currentTime - prevTime;
+            sim.stepForward(dt);
+            prevTime = currentTime;
             
             nFrameCount++;
         }

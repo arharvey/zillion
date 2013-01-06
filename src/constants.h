@@ -13,11 +13,14 @@ const float PARTICLE_SIZE_RELATIVE_TO_GRID_CELL = 0.9;
 const GLfloat NEAR = 0.1;
 const GLfloat FAR = 1000;
     
-const unsigned WIDTH = 800;
-const unsigned HEIGHT = 600;
+const unsigned WIDTH = 1024;
+const unsigned HEIGHT = 768;
     
 const float FOV = toRadians(60.0);
     
+const float GRAVITY = -1;
+const float MASS = 1;
+const float RESTITUTION = 0.8;
     
 } // END NAMESPACE ANONYMOUS
 } // END NAMESPACE ZILLION

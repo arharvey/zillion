@@ -83,7 +83,7 @@ TumbleCamera::setAzimuth(float a)
 void
 TumbleCamera::setAltitude(float a)
 {
-    m_altitude = a;
+    m_altitude = std::max(float(-M_PI/2.0), std::min(a, float(M_PI/2.0) ));
     invalidate();
 }
     
