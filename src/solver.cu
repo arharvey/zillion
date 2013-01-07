@@ -247,6 +247,7 @@ handlePlaneCollisionsKernel(float* Pd, float* Vd, const float* P0d,
         {
             const float perpSpeed = (V ^ plane);
             
+            // Components of velocity perpendicular and tangent to plane
             const float3 Vp = perpSpeed * plane;
             const float3 Vt = V-Vp;
             

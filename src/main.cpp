@@ -38,7 +38,7 @@ frand()
 
 
 void
-initPositions(float* pPts, float nDim, GLfloat cellSize, const Imath::V3f offset,
+initPositions(float* pPts, float nDim, GLfloat size, const Imath::V3f offset,
               const float jitter)
 {
     srand(17);
@@ -53,11 +53,39 @@ initPositions(float* pPts, float nDim, GLfloat cellSize, const Imath::V3f offset
             for(unsigned i = 0; i < nDim; i++)
             {
                 
-                pt[0] = (((float(i)+.5+frand()*jitter)*_DIM) - 0.5) * cellSize + offset.x;
-                pt[1] = (((float(j)+.5+frand()*jitter)*_DIM) - 0.5) * cellSize + offset.y;
-                pt[2] = (((float(k)+.5+frand()*jitter)*_DIM) - 0.5) * cellSize + offset.z;
+                pt[0] = (((float(i)+.5+frand()*jitter)*_DIM) - 0.5) * size + offset.x;
+                pt[1] = (((float(j)+.5+frand()*jitter)*_DIM) - 0.5) * size + offset.y;
+                pt[2] = (((float(k)+.5+frand()*jitter)*_DIM) - 0.5) * size + offset.z;
 
                 pt += 3;
+            }
+        }
+    }
+}
+
+
+void
+initColors(float* pColor, float nDim, const Imath::V3f& tint, float mix)
+{
+    srand(31);
+    
+    float* C = pColor;
+    for(unsigned k = 0; k < nDim; k++)
+    {
+        for(unsigned j = 0; j < nDim; j++)
+        {
+            for(unsigned i = 0; i < nDim; i++)
+            {
+                
+                Imath::V3f CC(frand(), frand(), frand());
+                CC *= 1.0f / std::max(CC.x, std::max(CC.y, CC.z));
+                CC = mix*CC + (1.0f-mix)*tint;
+
+                C[0] = CC.x;
+                C[1] = CC.y;
+                C[2] = CC.z;
+                
+                C += 3;
             }
         }
     }
@@ -204,8 +232,6 @@ public:
         kModelViewXf,
         kModelViewNormalXf,
         kLightDirWorld,
-        kSurfaceColor0,
-        kSurfaceColor1,
         kNumUniforms
     };
     
@@ -228,6 +254,7 @@ public:
         glBindAttribLocation(program, 2, "uv");
         
         glBindAttribLocation(program, 3, "center");
+        glBindAttribLocation(program, 4, "color");
 
         glBindFragDataLocation(program, 0, "outColor" );
         
@@ -252,9 +279,7 @@ const char* ParticleProgram::szUniforms[] = {
     "projectionXf",
     "modelViewXf",
     "normalXf",
-    "lightDirWorld",
-    "surfaceColor0",
-    "surfaceColor1" 
+    "lightDirWorld"
 };
 
 
@@ -477,10 +502,14 @@ run()
        
         // Initialize simulation
         const unsigned nParticles = nDimNum*nDimNum*nDimNum;
+        
         std::cout << "Instancing " << nParticles << " objects" << std::endl;
          
         float* Pinit = new float[nParticles*3];
         initPositions(Pinit, nDimNum, 1.0, Imath::V3f(0.0, 0.75, 0.0), 0.8);
+        
+        float* Cinit = new float[nParticles*3];
+        initColors(Cinit, nDimNum, Imath::V3f(0.9, 0.9, 1.0), 0.5);
         
         float* Vinit = new float[nParticles*3];
         initVelocities(Vinit, Pinit, nParticles, 0.8, Imath::V3f(0.0, 0.0, 0.0));
@@ -488,12 +517,32 @@ run()
         SimulationCUDA sim(g_cudaDevice, Pinit, Vinit, nParticles, particleRadius);
         
         delete [] Vinit;
+        delete [] Cinit;
         delete [] Pinit;
         
         // Initialise shader programs
         
         particleProg.use();
         particleProg.set(ParticleProgram::kScale, particleRadius);
+        
+        sphere.bind();
+        GLuint colorBuffer;
+        glGenBuffers(1, &colorBuffer);
+    
+        glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*nParticles*3,
+                        Cinit, GL_STATIC_DRAW);
+
+        glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 0, 0);
+        glEnableVertexAttribArray(4); // Color attribute
+    
+        GLint colorAttrib = glGetAttribLocation(particleProg, "color");
+        glEnableVertexAttribArray(colorAttrib);
+        glVertexAttribPointer(colorAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
+        glVertexAttribDivisorARB(colorAttrib, 1);
+        
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        sphere.unbind();
         
         groundProg.use();
         groundProg.set(GroundProgram::kTex, 0);
