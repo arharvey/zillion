@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include <iostream>
 #include <fstream>
 
@@ -10,6 +12,11 @@ m_id(0), m_bValid(false)
 {
     std::ifstream source;
     source.open(szFile);
+    if(!source.is_open())
+    {
+        std::cerr << "Unable to open shader source: " << szFile << std::endl;
+        return;
+    }
     
     source.seekg(0, std::ios::end);
     int length = source.tellg();

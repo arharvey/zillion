@@ -65,7 +65,7 @@ macro (PREFIX_FIND_LIB prefix libname libpath_var liblist_var cachelist_var)
     NAMES ${libname}d ${libname}_d ${libname}debug ${libname}_debug
     PATHS ${${libpath_var}}
     PATH_SUFFIXES lib
-    NO_DEDAULT_PATH
+    NO_DEFAULT_PATH
   )
   # Properly define ${tmp_prefix}_LIBRARY (cached) and ${tmp_prefix}_LIBRARIES
   select_library_configurations (${tmp_prefix})

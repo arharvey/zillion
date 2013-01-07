@@ -253,7 +253,7 @@ handlePlaneCollisionsKernel(float* Pd, float* Vd, const float* P0d,
             
             // Bounce or contact?
             V = Vt;
-            if(perpSpeed < -0.05f)
+            if(perpSpeed < -0.1f)
                 V -= Vp*Cr;
             else
                 V *= (1.0f - 0.5f*dt);

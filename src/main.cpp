@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <assert.h>
 
 #include <iostream>
@@ -475,16 +476,18 @@ run()
 {
     ChequerTexture chequerTex(2);
     
+    const char* szShadersDir = "../src/";
+    
     // Particle program
-    ParticleProgram particleProg("/Users/andrewharvey/dev/zillion/src/");
+    ParticleProgram particleProg(szShadersDir);
     if(!particleProg)
         return false;
     
-    GroundProgram groundProg("/Users/andrewharvey/dev/zillion/src/");
+    GroundProgram groundProg(szShadersDir);
     if(!groundProg)
         return false;
     
-    DomeProgram domeProg("/Users/andrewharvey/dev/zillion/src/");
+    DomeProgram domeProg(szShadersDir);
     if(!domeProg)
         return false;
     
@@ -506,19 +509,15 @@ run()
         std::cout << "Instancing " << nParticles << " objects" << std::endl;
          
         float* Pinit = new float[nParticles*3];
-        initPositions(Pinit, nDimNum, 1.0, Imath::V3f(0.0, 0.75, 0.0), 0.8);
-        
-        float* Cinit = new float[nParticles*3];
-        initColors(Cinit, nDimNum, Imath::V3f(0.9, 0.9, 1.0), 0.5);
-        
+        initPositions(Pinit, nDimNum, 1.0, Imath::V3f(0.0, 0.75, 0.0), 1.0);
+                
         float* Vinit = new float[nParticles*3];
         initVelocities(Vinit, Pinit, nParticles, 0.8, Imath::V3f(0.0, 0.0, 0.0));
         
         SimulationCUDA sim(g_cudaDevice, Pinit, Vinit, nParticles, particleRadius);
         
-        delete [] Vinit;
-        delete [] Cinit;
         delete [] Pinit;
+        delete [] Vinit;
         
         // Initialise shader programs
         
@@ -529,10 +528,15 @@ run()
         GLuint colorBuffer;
         glGenBuffers(1, &colorBuffer);
     
+        float* Cinit = new float[nParticles*3];
+        initColors(Cinit, nDimNum, Imath::V3f(0.9, 0.9, 1.0), 0.5);
+        
         glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
         glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*nParticles*3,
                         Cinit, GL_STATIC_DRAW);
 
+        delete [] Cinit;
+        
         glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, 0, 0);
         glEnableVertexAttribArray(4); // Color attribute
     
@@ -738,7 +742,7 @@ run()
             
             // Step the simulation forward
             const double currentTime = glfwGetTime();
-            const double dt = currentTime - prevTime;
+            const double dt = std::min(currentTime - prevTime, 1.0/60.0);
             sim.stepForward(dt);
             prevTime = currentTime;
             

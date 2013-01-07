@@ -67,7 +67,7 @@ PlanePrimitive::init(const Imath::V3f& uDir)
 PlanePrimitive::~PlanePrimitive()
 {
     glDeleteBuffers(kNumBuffers, m_buffer);
-    glDeleteVertexArraysAPPLE(1, &m_vao);
+    glDeleteVertexArrays(1, &m_vao);
 }
 
 
