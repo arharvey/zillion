@@ -509,7 +509,7 @@ run()
         std::cout << "Instancing " << nParticles << " objects" << std::endl;
          
         float* Pinit = new float[nParticles*3];
-        initPositions(Pinit, nDimNum, 1.0, Imath::V3f(0.0, 0.75, 0.0), 1.0);
+        initPositions(Pinit, nDimNum, GRID_SIZE, Imath::V3f(0.0, 0.75, 0.0), 1.0);
                 
         float* Vinit = new float[nParticles*3];
         initVelocities(Vinit, Pinit, nParticles, 0.8, Imath::V3f(0.0, 0.0, 0.0));

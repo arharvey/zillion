@@ -6,8 +6,8 @@
 namespace Zillion {
 namespace {
 
-const unsigned GRID_DIM = 38;
-const float GRID_SIZE = 1.0;
+const unsigned GRID_DIM = 43;
+const float GRID_SIZE = 2.0;
 const float PARTICLE_SIZE_RELATIVE_TO_GRID_CELL = 0.9;
     
 const GLfloat NEAR = 0.1;
