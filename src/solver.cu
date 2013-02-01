@@ -278,3 +278,58 @@ handlePlaneCollisions(float* Pd, float* Vd, const float* P0d,
     
     handlePlaneCollisionsKernel<<<dimGrid, dimBlock>>>(Pd, Vd, P0d, N, r, dt, Cr);
 }
+
+// ---------------------------------------------------------------------------
+
+__global__
+void
+minFloat3Kernel(float* Pd, unsigned N)
+{
+    extern __shared__ float sm[];
+    
+    // Each thread loads one element from the position array into shared mem
+    unsigned tid = threadIdx.x;
+    tid += tid<<1;
+    
+    unsigned i = blockIdx.x*blockDim.x + threadIdx.x;
+    i += i<<1;
+    
+    sm[tid+0] = Pd[i];
+    sm[tid+1] = Pd[i+1];
+    sm[tid+2] = Pd[i+2];
+    
+    __syncthreads();
+    
+    unsigned s = blockDim.x/2;
+    s += s<<1;
+    
+    for(; s > 0; s >>= 1)
+    {
+        if(tid < s)
+        {
+            float* a = &sm[tid];
+            const float* b = &sm[tid + s];
+            
+            if(b[0] < a[0]) a[0] = b[0];
+            if(b[1] < a[1]) a[1] = b[1];
+            if(b[2] < a[2]) a[2] = b[2];
+            
+        }
+        
+        __syncthreads();
+    }
+    
+    
+    // Write result to global memory
+    if(tid == 0)
+    {
+        unsigned bid = blockIdx.x;
+        bid += bid<<1;
+        
+        Pd[bid+0] = sm[0];
+        Pd[bid+1] = sm[1];
+        Pd[bid+2] = sm[2];
+    }
+}
+
+
