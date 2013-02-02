@@ -1,5 +1,7 @@
 #include <algorithm>
 
+#include <assert.h>
+
 __device__
 float3&
 unpack(float* array, unsigned n)
@@ -150,6 +152,29 @@ operator^(const float3& a, const float4& b)
 
 // ---------------------------------------------------------------------------
 
+inline
+unsigned
+roundUpToPower2(unsigned v)
+{
+    // Handle case where v is already a power of 2
+    v--;
+    
+    // Copy highest set bit to all bits below
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    
+    // New power of 2
+    v++;
+
+    return v;
+}
+
+
+// ---------------------------------------------------------------------------
+
 __global__
 void
 accumulateForcesKernel(float* Fd, unsigned N, float m, float g)
@@ -283,37 +308,42 @@ handlePlaneCollisions(float* Pd, float* Vd, const float* P0d,
 
 __global__
 void
-minFloat3Kernel(float* Pd, unsigned N)
+fillKernel(float* Pd, const float3 v)
+{
+    float3& dest = unpack(Pd, threadIdx.x);
+    
+    dest = v;
+}
+
+
+template<class Op>
+__global__
+void
+float3ReduceKernel(float* Pd)
 {
     extern __shared__ float sm[];
     
     // Each thread loads one element from the position array into shared mem
-    unsigned tid = threadIdx.x;
-    tid += tid<<1;
+    unsigned tid = threadIdx.x * 3;
+    unsigned i = (blockIdx.x*blockDim.x + threadIdx.x) * 3;
     
-    unsigned i = blockIdx.x*blockDim.x + threadIdx.x;
-    i += i<<1;
-    
-    sm[tid+0] = Pd[i];
+    sm[tid]   = Pd[i];
     sm[tid+1] = Pd[i+1];
     sm[tid+2] = Pd[i+2];
-    
+
     __syncthreads();
     
     unsigned s = blockDim.x/2;
     s += s<<1;
     
-    for(; s > 0; s >>= 1)
+    for(; s >= 3; s >>= 1)
     {
         if(tid < s)
         {
-            float* a = &sm[tid];
-            const float* b = &sm[tid + s];
+            float* a = sm + tid;
+            const float* b = a + s;
             
-            if(b[0] < a[0]) a[0] = b[0];
-            if(b[1] < a[1]) a[1] = b[1];
-            if(b[2] < a[2]) a[2] = b[2];
-            
+            Op::doIt(a, b);
         }
         
         __syncthreads();
@@ -323,13 +353,191 @@ minFloat3Kernel(float* Pd, unsigned N)
     // Write result to global memory
     if(tid == 0)
     {
-        unsigned bid = blockIdx.x;
-        bid += bid<<1;
+        unsigned bid = blockIdx.x*3;
         
-        Pd[bid+0] = sm[0];
+        Pd[bid]   = sm[0];
         Pd[bid+1] = sm[1];
         Pd[bid+2] = sm[2];
     }
+};
+
+
+__host__
+void
+reduceDims(unsigned& nBlocks, unsigned& nThreads, 
+                 const unsigned N, const cudaDeviceProp& prop)
+{
+    unsigned nThreadsPerBlockRaw = std::min(int(N), prop.maxThreadsPerBlock);
+    
+    nBlocks = (N + prop.maxThreadsPerBlock-1) / prop.maxThreadsPerBlock;
+    
+    // Kernel assumes that input float3 array has base-2 number of elements
+    nThreads = roundUpToPower2(nThreadsPerBlockRaw);
 }
 
 
+__host__
+unsigned
+reduceWorkSize(const unsigned N, const cudaDeviceProp& prop)
+{
+    unsigned nBlocks = 0, nThreads = 0;
+    reduceDims(nBlocks, nThreads, N, prop);
+    
+    return nBlocks * nThreads;
+}
+
+
+template<class Op>
+__host__
+unsigned
+float3ReducePass(float* Pd, unsigned N, const cudaDeviceProp& prop)
+{
+    unsigned nBlocks = 0, nThreads = 0;
+    reduceDims(nBlocks, nThreads, N, prop);
+    
+    unsigned nResidualThreads = (nBlocks * nThreads) - N;
+    if(nResidualThreads)
+        fillKernel<<<dim3(1), dim3(nResidualThreads)>>>(Pd+N*3, Op::padding);
+    
+    dim3 dimBlock(nThreads);
+    dim3 dimGrid(nBlocks);
+    
+    unsigned nAllocSharedMemPerBlock = nThreads * 3 * sizeof(float);
+    assert(nAllocSharedMemPerBlock < prop.sharedMemPerBlock);
+    
+    float3ReduceKernel<Op><<<dimGrid, dimBlock, nAllocSharedMemPerBlock>>>(Pd);
+    
+    return nBlocks;
+};
+
+
+template<class Op>
+__host__
+void
+float3Reduce(float* result, float* Pd, unsigned N, const cudaDeviceProp& prop)
+{
+    while(N > 1)
+        N = float3ReducePass<Op>(Pd, N, prop);
+    
+    cudaMemcpy(result, Pd, 3*sizeof(float), cudaMemcpyDeviceToHost);
+}
+
+
+// ---------------------------------------------------------------------------
+
+struct MinReductionOp
+{
+    static float3 padding;
+    
+    static inline
+    __device__
+    void
+    doIt(float* a, const float* b)
+    {
+        {
+            const float Xa = a[0], Xb = b[0];
+            if(Xb < Xa)
+                a[0] = Xb;
+        }
+
+        {
+            const float Ya = a[1], Yb = b[1];
+            if(Yb < Ya)
+                a[1] = Yb;
+        }
+
+        {
+            const float Za = a[2], Zb = b[2];
+            if(Zb < Za)
+                a[2] = Zb;
+        }
+    }
+};
+
+
+float3 MinReductionOp::padding = {std::numeric_limits<float>::max(),
+                                  std::numeric_limits<float>::max(),
+                                  std::numeric_limits<float>::max()};
+
+
+__host__
+void
+minFloat3(float* result, float* Pd, unsigned N, const cudaDeviceProp& prop)
+{
+    float3Reduce<MinReductionOp>(result, Pd, N, prop);
+}
+
+
+// ---------------------------------------------------------------------------
+
+struct MaxReductionOp
+{
+    static float3 padding;
+    
+    static inline
+    __device__
+    void
+    doIt(float* a, const float* b)
+    {
+        {
+            const float Xa = a[0], Xb = b[0];
+            if(Xb > Xa)
+                a[0] = Xb;
+        }
+
+        {
+            const float Ya = a[1], Yb = b[1];
+            if(Yb > Ya)
+                a[1] = Yb;
+        }
+
+        {
+            const float Za = a[2], Zb = b[2];
+            if(Zb > Za)
+                a[2] = Zb;
+        }
+    }
+};
+
+
+float3 MaxReductionOp::padding = {-std::numeric_limits<float>::max(),
+                                  -std::numeric_limits<float>::max(),
+                                  -std::numeric_limits<float>::max()};
+
+
+__host__
+void
+maxFloat3(float* result, float* Pd, unsigned N, const cudaDeviceProp& prop)
+{
+    float3Reduce<MaxReductionOp>(result, Pd, N, prop);
+}
+
+
+
+// ---------------------------------------------------------------------------
+
+struct SumReductionOp
+{
+    static float3 padding;
+    
+    static inline
+    __device__
+    void
+    doIt(float* a, const float* b)
+    {
+        a[0] += b[0];
+        a[1] += b[1];
+        a[2] += b[2];
+    }
+};
+
+
+float3 SumReductionOp::padding = {0.0, 0.0, 0.0};
+
+
+__host__
+void
+sumFloat3(float* result, float* Pd, unsigned N, const cudaDeviceProp& prop)
+{
+    float3Reduce<SumReductionOp>(result, Pd, N, prop);
+}

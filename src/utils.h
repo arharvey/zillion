@@ -1,6 +1,7 @@
 #ifndef _zillion_utils_h
 #define _zillion_utils_h
 
+#include <stdlib.h>
 #include <math.h>
 
 #define CHECK_GL() assert(glGetError() == 0)
@@ -29,6 +30,15 @@ yesNo(bool b)
 {
     return b  ? "Yes" : "No";
 }
+
+
+inline
+float
+frand()
+{
+    return float(rand()) / float(RAND_MAX);
+}
+
 
 
 } // END NAMESPACE ZILLION

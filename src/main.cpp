@@ -1,4 +1,3 @@
-#include <stdlib.h>
 #include <assert.h>
 
 #include <iostream>
@@ -20,6 +19,8 @@
 
 #include "simulationCUDA.h"
 
+#include "minMaxTest.h"
+
 const unsigned LEFT_BTN = 1;
 const unsigned MIDDLE_BTN = 2;
 const unsigned RIGHT_BTN = 4;
@@ -28,14 +29,6 @@ const unsigned RIGHT_BTN = 4;
 namespace Zillion {
 
 int g_cudaDevice = 0;
-   
-
-inline
-float
-frand()
-{
-    return float(rand()) / float(RAND_MAX);
-}
 
 
 void
@@ -120,7 +113,7 @@ printCUDADeviceProperties(const cudaDeviceProp& prop)
         
     std::cout << "Compute capability: "
             << prop.major << "." << prop.minor << std::endl;
-
+    
     std::cout << "Clock rate: " 
             << prop.clockRate/1000 << " MHz" << std::endl;
 
@@ -152,6 +145,9 @@ printCUDADeviceProperties(const cudaDeviceProp& prop)
             << prop.maxGridSize[1] << ", "
             << prop.maxGridSize[2] << std::endl;
 
+    std::cout << "Multiprocessor count: "
+            << prop.multiProcessorCount << std::endl;
+    
     std::cout << "Max threads per multi-processor: "
             << prop.maxThreadsPerMultiProcessor << std::endl;
 
@@ -772,6 +768,10 @@ main(int argc, char* argv[])
 {
     if(!Zillion::initCUDA())
         return 1;
+    
+    //Zillion::minTest(100*512*512, 17, Zillion::g_cudaDevice);
+    //return 0;
+    
     
 	glfwInit();
 
