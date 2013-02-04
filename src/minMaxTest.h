@@ -4,7 +4,7 @@
 namespace Zillion {
 
 void
-minTest(unsigned N, int seed, int cudaDevice);
+minTest(int N, int seed, int cudaDevice);
 
 } // END NAMESPACE ZILLION
 

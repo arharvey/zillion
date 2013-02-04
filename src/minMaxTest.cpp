@@ -1,6 +1,8 @@
 #include <limits>
 #include <iostream>
 
+#include <time.h>
+
 #include "solver.h"
 
 
@@ -98,17 +100,21 @@ sumFloat3CPU(float* minimum, const float* P, unsigned N)
 
 
 void
-minTest(unsigned N, int seed, int cudaDevice)
+minTest(int N, int seed, int cudaDevice)
 {
-    float* P = randomFloatArray(seed, N*3);
+    std::cout << "N = " << N << std::endl;
+    const float* P = randomFloatArray(seed, N*3);
     
     // CPU
     
     std::cout << "Calculating minimum on CPU" << std::endl;
     
     float minCPU[3] = {0, 0, 0};
-    sumFloat3CPU(minCPU, P, N);
     
+    clock_t cpuStart = clock();
+    minFloat3CPU(minCPU, P, N);
+    clock_t cpuEnd = clock();
+    double cpuElapsed = ((double) (cpuEnd - cpuStart)) / CLOCKS_PER_SEC;
     
     // GPU
     
@@ -117,14 +123,37 @@ minTest(unsigned N, int seed, int cudaDevice)
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, cudaDevice);
     
-    float* Pd;
-    cudaMalloc( (void**)&Pd, reduceWorkSize(N,prop)*3*sizeof(float) );
-    cudaMemcpy(Pd, P, N*3*sizeof(float), cudaMemcpyHostToDevice);
+    float* work_d[2] = {NULL, NULL};
+    int workSize = reduceWorkSize(N,prop)*3*sizeof(float);
+    
+    for(int n = 0; n < 2; n++)
+    {
+        cudaError_t status = cudaMalloc( (void**)&work_d[n], workSize);
+        if(status == cudaErrorMemoryAllocation)
+        {
+            std::cerr << "Error allocating graphics memory" << std::endl;
+            return;
+        }
+    }
+    
+    cudaMemcpy(work_d[0], P, N*3*sizeof(float), cudaMemcpyHostToDevice);
     
     float minCUDA[3];
-    sumFloat3(minCUDA, Pd, N, prop);
     
-    cudaFree(Pd);
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    
+    cudaEventRecord(start);
+    minFloat3(minCUDA, work_d, N, prop);
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    
+    float gpuElapsed;
+    cudaEventElapsedTime(&gpuElapsed, start, stop);
+    
+    for(int n = 0; n < 2; n++)
+        cudaFree(work_d[n]);
     
     // Check and report
     
@@ -139,10 +168,13 @@ minTest(unsigned N, int seed, int cudaDevice)
     
     bool match = true;
     for(unsigned i = 0; i < 3; i++)
-        match = match && (minCPU[i] == minCUDA[i]);
+        match = match && (fabs(minCPU[i] - minCUDA[i]) < 1e-6);
     
     if(!match)
         std::cerr << "ERROR! CPU and GPU results do not match!" << std::endl;
+    
+    std::cout << "CPU time: " << cpuElapsed << " ms" << std::endl;
+    std::cout << "GPU time: " << gpuElapsed << " ms" << std::endl;
     
     delete [] P;
 }

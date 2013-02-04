@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <iostream>
 
 #include <assert.h>
 
@@ -153,8 +154,8 @@ operator^(const float3& a, const float4& b)
 // ---------------------------------------------------------------------------
 
 inline
-unsigned
-roundUpToPower2(unsigned v)
+int
+roundUpToPower2(int v)
 {
     // Handle case where v is already a power of 2
     v--;
@@ -200,6 +201,7 @@ accumulateForces(float* Fd, unsigned N, float m, float g, unsigned nMaxThreadsPe
     dim3 dimGrid( (N + nMaxThreadsPerBlock-1) / nMaxThreadsPerBlock );
     
     accumulateForcesKernel<<<dimGrid, dimBlock>>>(Fd, N, m, g);
+    assert(cudaGetLastError() == cudaSuccess);
 }
 
 
@@ -244,6 +246,7 @@ forwardEulerSolve(float* Pd, float* Vd,
     
     forwardEulerSolveKernel<<<dimGrid, dimBlock>>>(Pd, Vd, prevPd, Fd, N,
                                                    m, dt);
+    assert(cudaGetLastError() == cudaSuccess);
 }
 
 
@@ -302,6 +305,7 @@ handlePlaneCollisions(float* Pd, float* Vd, const float* P0d,
     dim3 dimGrid( (N + nMaxThreadsPerBlock-1) / nMaxThreadsPerBlock );
     
     handlePlaneCollisionsKernel<<<dimGrid, dimBlock>>>(Pd, Vd, P0d, N, r, dt, Cr);
+    assert(cudaGetLastError() == cudaSuccess);
 }
 
 // ---------------------------------------------------------------------------
@@ -319,23 +323,22 @@ fillKernel(float* Pd, const float3 v)
 template<class Op>
 __global__
 void
-float3ReduceKernel(float* Pd)
+float3ReduceKernel(float* out_d, const float* in_d)
 {
     extern __shared__ float sm[];
     
     // Each thread loads one element from the position array into shared mem
-    unsigned tid = threadIdx.x * 3;
-    unsigned i = (blockIdx.x*blockDim.x + threadIdx.x) * 3;
+    const int tid = threadIdx.x * 3;
+    const int i = (blockIdx.x*blockDim.x + threadIdx.x)*3;
     
-    sm[tid]   = Pd[i];
-    sm[tid+1] = Pd[i+1];
-    sm[tid+2] = Pd[i+2];
+    sm[tid]   = in_d[i];
+    sm[tid+1] = in_d[i+1];
+    sm[tid+2] = in_d[i+2];
 
     __syncthreads();
     
-    unsigned s = blockDim.x/2;
-    s += s<<1;
-    
+    int s = (blockDim.x/2) * 3;
+ 
     for(; s >= 3; s >>= 1)
     {
         if(tid < s)
@@ -353,34 +356,35 @@ float3ReduceKernel(float* Pd)
     // Write result to global memory
     if(tid == 0)
     {
-        unsigned bid = blockIdx.x*3;
-        
-        Pd[bid]   = sm[0];
-        Pd[bid+1] = sm[1];
-        Pd[bid+2] = sm[2];
+        const int bid = blockIdx.x * 3;
+  
+        out_d[bid]   = sm[0];
+        out_d[bid+1] = sm[1];
+        out_d[bid+2] = sm[2];
     }
 };
 
 
 __host__
 void
-reduceDims(unsigned& nBlocks, unsigned& nThreads, 
-                 const unsigned N, const cudaDeviceProp& prop)
+reduceDims(int& nBlocks, int& nThreads, const int N, const cudaDeviceProp& prop)
 {
-    unsigned nThreadsPerBlockRaw = std::min(int(N), prop.maxThreadsPerBlock);
-    
-    nBlocks = (N + prop.maxThreadsPerBlock-1) / prop.maxThreadsPerBlock;
+    nThreads = std::min(roundUpToPower2(N), prop.maxThreadsPerBlock);
     
     // Kernel assumes that input float3 array has base-2 number of elements
-    nThreads = roundUpToPower2(nThreadsPerBlockRaw);
+    nThreads = std::max(64, std::min(nThreads, 128));
+    
+    nBlocks = (N + nThreads-1) / nThreads;
+    
+    assert(nBlocks <= prop.maxGridSize[0]);
 }
 
 
 __host__
 unsigned
-reduceWorkSize(const unsigned N, const cudaDeviceProp& prop)
+reduceWorkSize(const int N, const cudaDeviceProp& prop)
 {
-    unsigned nBlocks = 0, nThreads = 0;
+    int nBlocks = 0, nThreads = 0;
     reduceDims(nBlocks, nThreads, N, prop);
     
     return nBlocks * nThreads;
@@ -390,22 +394,47 @@ reduceWorkSize(const unsigned N, const cudaDeviceProp& prop)
 template<class Op>
 __host__
 unsigned
-float3ReducePass(float* Pd, unsigned N, const cudaDeviceProp& prop)
+float3ReducePass(float* out_d, float* in_d, int N, const cudaDeviceProp& prop)
 {
-    unsigned nBlocks = 0, nThreads = 0;
+    int nBlocks = 0, nThreads = 0;
     reduceDims(nBlocks, nThreads, N, prop);
     
-    unsigned nResidualThreads = (nBlocks * nThreads) - N;
-    if(nResidualThreads)
-        fillKernel<<<dim3(1), dim3(nResidualThreads)>>>(Pd+N*3, Op::padding);
+    int nResidualThreads = (nBlocks * nThreads) - N;
+    
+    std::cout << "N: " << N 
+              << ", Blocks: " << nBlocks
+              << ", Threads: " << nThreads
+              << ", Residual: " << nResidualThreads << std::endl;
+    
+    
+    if(nResidualThreads > 0)
+    {
+        fillKernel<<<dim3(1), dim3(nResidualThreads)>>>(in_d+(N*3), Op::padding);
+        assert(cudaGetLastError() == cudaSuccess);
+    }
     
     dim3 dimBlock(nThreads);
     dim3 dimGrid(nBlocks);
     
-    unsigned nAllocSharedMemPerBlock = nThreads * 3 * sizeof(float);
+    int nAllocSharedMemPerBlock = nThreads * 3 * sizeof(float);
     assert(nAllocSharedMemPerBlock < prop.sharedMemPerBlock);
     
-    float3ReduceKernel<Op><<<dimGrid, dimBlock, nAllocSharedMemPerBlock>>>(Pd);
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    
+    cudaEventRecord(start);
+  
+    float3ReduceKernel<Op><<<dimGrid, dimBlock, nAllocSharedMemPerBlock>>>(out_d, in_d);
+    assert(cudaGetLastError() == cudaSuccess);
+    
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    
+    float gpuElapsed;
+    cudaEventElapsedTime(&gpuElapsed, start, stop);
+    
+    std::cout << "GPU time: " << gpuElapsed << " ms" << std::endl;
     
     return nBlocks;
 };
@@ -414,12 +443,21 @@ float3ReducePass(float* Pd, unsigned N, const cudaDeviceProp& prop)
 template<class Op>
 __host__
 void
-float3Reduce(float* result, float* Pd, unsigned N, const cudaDeviceProp& prop)
+float3Reduce(float* result, float** work_d, int N, const cudaDeviceProp& prop)
 {
+    int i = 0;
     while(N > 1)
-        N = float3ReducePass<Op>(Pd, N, prop);
+    {
+        float* out_d = work_d[1-i];
+        float* in_d = work_d[i];
+        
+        N = float3ReducePass<Op>(out_d, in_d, N, prop);
+        
+        // Alternate buffers
+        i = 1-i;
+    }
     
-    cudaMemcpy(result, Pd, 3*sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(result, work_d[i], 3*sizeof(float), cudaMemcpyDeviceToHost);
 }
 
 
@@ -462,9 +500,9 @@ float3 MinReductionOp::padding = {std::numeric_limits<float>::max(),
 
 __host__
 void
-minFloat3(float* result, float* Pd, unsigned N, const cudaDeviceProp& prop)
+minFloat3(float* result, float** work_d, int N, const cudaDeviceProp& prop)
 {
-    float3Reduce<MinReductionOp>(result, Pd, N, prop);
+    float3Reduce<MinReductionOp>(result, work_d, N, prop);
 }
 
 
@@ -507,9 +545,9 @@ float3 MaxReductionOp::padding = {-std::numeric_limits<float>::max(),
 
 __host__
 void
-maxFloat3(float* result, float* Pd, unsigned N, const cudaDeviceProp& prop)
+maxFloat3(float* result, float** work_d, int N, const cudaDeviceProp& prop)
 {
-    float3Reduce<MaxReductionOp>(result, Pd, N, prop);
+    float3Reduce<MaxReductionOp>(result, work_d, N, prop);
 }
 
 
@@ -537,7 +575,7 @@ float3 SumReductionOp::padding = {0.0, 0.0, 0.0};
 
 __host__
 void
-sumFloat3(float* result, float* Pd, unsigned N, const cudaDeviceProp& prop)
+sumFloat3(float* result, float** work_d, int N, const cudaDeviceProp& prop)
 {
-    float3Reduce<SumReductionOp>(result, Pd, N, prop);
+    float3Reduce<SumReductionOp>(result, work_d, N, prop);
 }

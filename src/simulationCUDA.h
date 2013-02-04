@@ -30,6 +30,8 @@ protected:
     float* m_Vd; /// Particle velocities (on GPU)
     SharedBuffer* m_P[2]; /// Particle positions (double buffered, on GPU)
     
+    float* m_Wd; // Scratch space for reduction operations
+    
     unsigned m_currentBuffer;
     
     unsigned m_nParticles;

@@ -769,7 +769,7 @@ main(int argc, char* argv[])
     if(!Zillion::initCUDA())
         return 1;
     
-    //Zillion::minTest(100*512*512, 17, Zillion::g_cudaDevice);
+    //Zillion::minTest(7*1024*1024, 23, Zillion::g_cudaDevice);
     //return 0;
     
     

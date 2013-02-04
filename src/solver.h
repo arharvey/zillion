@@ -23,19 +23,19 @@ handlePlaneCollisions(float* Pd, float* Vd, const float* P0d,
                             unsigned nMaxThreadsPerBlock);
     
 unsigned
-reduceWorkSize(const unsigned N, const cudaDeviceProp& prop);
+reduceWorkSize(const int N, const cudaDeviceProp& prop);
 
 
 extern void
-minFloat3(float* result, float* Pd, unsigned N, const cudaDeviceProp& prop);
+minFloat3(float* result, float** work_d, int N, const cudaDeviceProp& prop);
 
 
 extern void
-maxFloat3(float* result, float* Pd, unsigned N, const cudaDeviceProp& prop);
+maxFloat3(float* result, float** work_d, int N, const cudaDeviceProp& prop);
 
 
 extern void
-sumFloat3(float* result, float* Pd, unsigned N, const cudaDeviceProp& prop);
+sumFloat3(float* result, float** work_d, int N, const cudaDeviceProp& prop);
     
     
 // --------------------------------------------------------------------------- 
