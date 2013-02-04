@@ -1,24 +1,10 @@
 #include <limits>
 #include <iostream>
 
-#include <cuda_runtime.h>
+#include "solver.h"
 
 
 #include "utils.h"
-
-
-unsigned
-reduceWorkSize(const unsigned N, const cudaDeviceProp& prop);
-
-
-extern void
-minFloat3(float* result, float* Pd, unsigned N, const cudaDeviceProp& prop);
-
-extern void
-maxFloat3(float* result, float* Pd, unsigned N, const cudaDeviceProp& prop);
-
-extern void
-sumFloat3(float* result, float* Pd, unsigned N, const cudaDeviceProp& prop);
 
 // -------------------------------------------------------------------------
 

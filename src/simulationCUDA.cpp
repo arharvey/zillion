@@ -8,26 +8,7 @@
 #include "constants.h"
 
 #include "simulationCUDA.h"
-
-
-// ---------------------------------------------------------------------------
-
-
-void
-accumulateForces(float* Fd, unsigned N, float m, float g,
-                 unsigned nMaxThreadsPerBlock);
-
-void
-forwardEulerSolve(float* Pd, float* Vd,
-                  const float* prevPd, const float* Fd, unsigned N,
-                  float m, float dt,
-                  unsigned nMaxThreadsPerBlock);
-
-void
-handlePlaneCollisions(float* Pd, float* Vd, const float* P0d,
-                            unsigned N, float r, float dt, float Cr,
-                            unsigned nMaxThreadsPerBlock);
-
+#include "solver.h"
 
 namespace Zillion {
     
