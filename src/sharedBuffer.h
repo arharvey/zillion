@@ -4,6 +4,8 @@
 #include <GL/glew.h>
 #include <cuda_gl_interop.h>
 
+#include "cudaUtils.h"
+
 namespace Zillion {
 
 template<class T>
@@ -38,7 +40,10 @@ m_target(target), m_nSize(0), m_buffer(0), m_pRes(NULL), m_pDevice(NULL)
     glGenBuffers(1, &m_buffer);
     glBindBuffer(m_target, m_buffer);
     glBufferData(m_target, nSize*sizeof(T), NULL, usage);
-    cudaGraphicsGLRegisterBuffer(&m_pRes, m_buffer, cudaGraphicsMapFlagsNone);
+    
+    cudaCheckError( cudaGraphicsGLRegisterBuffer(&m_pRes,
+                                                 m_buffer,
+                                                 cudaGraphicsMapFlagsNone) );
 };
 
 
@@ -58,8 +63,9 @@ SharedBuffer<T>::map()
 {
     size_t s;
             
-    ::cudaGraphicsMapResources(1, &m_pRes);
-    cudaGraphicsResourceGetMappedPointer((void**)&m_pDevice, &s, m_pRes);
+    cudaCheckError( ::cudaGraphicsMapResources(1, &m_pRes) );
+    cudaCheckError( cudaGraphicsResourceGetMappedPointer((void**)&m_pDevice,
+                                                         &s, m_pRes) );
 
     return (T*)m_pDevice;
 };
