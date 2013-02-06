@@ -21,8 +21,8 @@ __cudaCheckError(cudaError_t status, int nLine, const char* szFile)
 {
     if(status != cudaSuccess)
     {
-        std::cerr << "CUDA ERROR: " << szFile << " at line " << nLine
-                  << std::endl;
+        std::cerr << "CUDA ERROR: " << cudaGetErrorString(status) << std::endl
+                  << szFile << " at line " << nLine << std::endl;
         exit(EXIT_FAILURE);
     }
 }
@@ -159,6 +159,24 @@ float
 operator^(const float3& a, const float4& b)
 {
     return a.x*b.x + a.y*b.y + a.z*b.z + b.w;
+}
+
+
+inline __host__
+std::ostream&
+operator<<(std::ostream& out, float3& v) 
+{
+	out << v.x << ", " << v.y << ", " << v.z;
+	return out;
+}
+
+
+inline __host__
+std::ostream&
+operator<<(std::ostream& out, int3& v) 
+{
+	out << v.x << ", " << v.y << ", " << v.z;
+	return out;
 }
 
 

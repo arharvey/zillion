@@ -4,23 +4,38 @@
 #include <cuda_runtime.h>
 
 namespace Zillion {
+
+// ---------------------------------------------------------------------------
+
+namespace {
+    const unsigned MAX_OCCUPANCY = 2; // Particles per cell
+} // END ANONYMOUS NAMESPACE
     
+
 // ---------------------------------------------------------------------------
     
 void
 accumulateForces(float3* Fd, unsigned N, float m, float g,
-                 unsigned nMaxThreadsPerBlock);
+                 const cudaDeviceProp& prop);
 
 void
 forwardEulerSolve(float3* Pd, float3* Vd,
                   const float3* prevPd, const float3* Fd, unsigned N,
                   float m, float dt,
-                  unsigned nMaxThreadsPerBlock);
+                  const cudaDeviceProp& prop);
 
 void
 handlePlaneCollisions(float3* Pd, float3* Vd, const float3* P0d,
                             unsigned N, float r, float dt, float Cr,
-                            unsigned nMaxThreadsPerBlock);
+                            const cudaDeviceProp& prop);
+
+
+void
+populateCollisionGrid(int* d_G, int* d_GN, const float3* const d_P,
+                      const int N, const float3 origin, 
+                      const int3 dims, const float cellSize,
+                      const cudaDeviceProp& prop);
+
     
 unsigned
 reduceWorkSize(int N, const cudaDeviceProp& prop);

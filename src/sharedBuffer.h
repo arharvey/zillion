@@ -35,7 +35,7 @@ protected:
 
 template<class T>
 SharedBuffer<T>::SharedBuffer(GLenum target, size_t nSize, GLenum usage):
-m_target(target), m_nSize(0), m_buffer(0), m_pRes(NULL), m_pDevice(NULL)
+m_target(target), m_nSize(nSize), m_buffer(0), m_pRes(NULL), m_pDevice(NULL)
 {
     glGenBuffers(1, &m_buffer);
     glBindBuffer(m_target, m_buffer);

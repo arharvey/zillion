@@ -4,6 +4,7 @@
 #include <assert.h>
 
 #include "cudaUtils.h"
+#include "solver.h"
 
 #define SOLVER_DIAGNOSTICS (0)
 
@@ -44,10 +45,19 @@ roundUpToPower2(int v)
     
     // New power of 2
     v++;
-
+    
     return v;
 }
 
+
+
+__host__
+void
+calcDims(int& nBlocks, int& nThreads, const int N, const cudaDeviceProp& prop)
+{
+    nThreads = std::min(N, prop.maxThreadsPerBlock);
+    nBlocks = (N + prop.maxThreadsPerBlock-1) / prop.maxThreadsPerBlock;
+}
 
 // ---------------------------------------------------------------------------
 
@@ -70,12 +80,12 @@ accumulateForcesKernel(float3* Fd, unsigned N, float m, float g)
 
 __host__
 void
-accumulateForces(float3* Fd, unsigned N, float m, float g, unsigned nMaxThreadsPerBlock)
+accumulateForces(float3* Fd, unsigned N, float m, float g, const cudaDeviceProp& prop)
 {
-    dim3 dimBlock( std::min(N, nMaxThreadsPerBlock) );
-    dim3 dimGrid( (N + nMaxThreadsPerBlock-1) / nMaxThreadsPerBlock );
+    int nBlocks, nThreads;
+    calcDims(nBlocks, nThreads, N, prop);
     
-    accumulateForcesKernel<<<dimGrid, dimBlock>>>(Fd, N, m, g);
+    accumulateForcesKernel<<<nBlocks, nThreads>>>(Fd, N, m, g);
     cudaCheckLastError();
 }
 
@@ -114,12 +124,12 @@ __host__
 void
 forwardEulerSolve(float3* Pd, float3* Vd,
                   const float3* prevPd, const float3* Fd,
-                  unsigned N, float m, float dt, unsigned nMaxThreadsPerBlock)
+                  unsigned N, float m, float dt, const cudaDeviceProp& prop)
 {
-    dim3 dimBlock( std::min(N, nMaxThreadsPerBlock) );
-    dim3 dimGrid( (N + nMaxThreadsPerBlock-1) / nMaxThreadsPerBlock );
+    int nBlocks, nThreads;
+    calcDims(nBlocks, nThreads, N, prop);
     
-    forwardEulerSolveKernel<<<dimGrid, dimBlock>>>(Pd, Vd, prevPd, Fd, N,
+    forwardEulerSolveKernel<<<nBlocks, nThreads>>>(Pd, Vd, prevPd, Fd, N,
                                                    m, dt);
     cudaCheckLastError();
 }
@@ -174,12 +184,62 @@ __host__
 void
 handlePlaneCollisions(float3* Pd, float3* Vd, const float3* P0d,
                       unsigned N, float r, float dt, float Cr,
-                      unsigned nMaxThreadsPerBlock)
+                      const cudaDeviceProp& prop)
 {
-    dim3 dimBlock( std::min(N, nMaxThreadsPerBlock) );
-    dim3 dimGrid( (N + nMaxThreadsPerBlock-1) / nMaxThreadsPerBlock );
+    int nBlocks, nThreads;
+    calcDims(nBlocks, nThreads, N, prop);
     
-    handlePlaneCollisionsKernel<<<dimGrid, dimBlock>>>(Pd, Vd, P0d, N, r, dt, Cr);
+    handlePlaneCollisionsKernel<<<nBlocks, nThreads>>>(Pd, Vd, P0d, N, r, dt, Cr);
+    cudaCheckLastError();
+}
+
+
+// ---------------------------------------------------------------------------
+
+__global__
+void
+populateCollisionGridKernel(int* d_G, int* d_GN, const float3* const d_P,
+                        const int N, const float3 origin, 
+                        const int3 dims, const float cellSize)
+{
+    const float M = 1.0f/cellSize;
+    
+    int n = blockIdx.x*blockDim.x + threadIdx.x;
+    while(n < N)
+    {
+        // Calculate grid index
+        float3 I = d_P[n];
+        I -= origin;
+        I *= M;
+        
+        const int cellIndex = int(I.x) +
+                              int(I.y)*dims.x +
+                              int(I.z)*dims.x*dims.y;
+        
+        const int i = atomicAdd(d_GN+cellIndex, 1);
+        if(i < MAX_OCCUPANCY)
+        {
+            int* out = d_G + cellIndex*MAX_OCCUPANCY;
+            out[i] = n;
+        }
+        
+        n += blockDim.x * gridDim.x;
+    }
+}
+
+
+__host__
+void
+populateCollisionGrid(int* d_G, int* d_GN, const float3* const d_P,
+                      const int N, const float3 origin, 
+                      const int3 dims, const float cellSize,
+                      const cudaDeviceProp& prop)
+{
+    int nBlocks, nThreads;
+    calcDims(nBlocks, nThreads, N, prop);
+    
+    populateCollisionGridKernel<<<nBlocks, nThreads>>>(d_G, d_GN, d_P, N, 
+                                                   origin, dims, cellSize);
     cudaCheckLastError();
 }
 

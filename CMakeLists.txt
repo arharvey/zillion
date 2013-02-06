@@ -5,6 +5,7 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake")
 
 set (CMAKE_VERBOSE_MAKEFILE TRUE)
 find_package(CUDA REQUIRED)
+set (CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -arch compute_11")
 
 FILE (GLOB zillion_src src/*.cpp src/*.h src/*.cu)
 

@@ -3,6 +3,9 @@
 
 #include "sharedBuffer.h"
 
+#define SANITY_CHECK_COLLISION_GRID 0
+
+
 namespace Zillion {
     
 // ---------------------------------------------------------------------------
@@ -32,10 +35,21 @@ protected:
     
     float3* m_Wd; // Scratch space for reduction operations
     
+    int* m_GNd; // Number of particles in each cell of the collision grid
+    int* m_Gd; // Collision grid. Each cell has a list of particles
+    int m_nMaxCells;
+    
     unsigned m_currentBuffer;
     
-    unsigned m_nParticles;
+    int m_nParticles;
     const float m_particleRadius;
+    
+#ifdef SANITY_CHECK_COLLISION_GRID
+    void sanityCheckCollisionGrid(int nCells);
+    
+    int* m_GNh;
+    int* m_Gh;
+#endif
 };
     
     
