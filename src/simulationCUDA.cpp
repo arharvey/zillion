@@ -5,6 +5,8 @@
 #include <cuda_runtime.h>
 #include <cuda_gl_interop.h>
 
+#include "cudaUtils.h"
+
 #include "constants.h"
 
 #include "simulationCUDA.h"
@@ -16,7 +18,7 @@ namespace Zillion {
     
 
 SimulationCUDA::SimulationCUDA(int cudaDevice,
-                               const float* Pinit, const float* Vinit,
+                               const float3* Pinit, const float3* Vinit,
                                unsigned nParticles, float particleRadius):
 m_cudaDevice(cudaDevice),
 m_Fd(NULL), m_Vd(NULL),
@@ -28,20 +30,22 @@ m_nParticles(nParticles), m_particleRadius(particleRadius)
     
     for(unsigned n = 0; n < 2; n++)
     {
-        m_P[n] = new SharedBuffer(GL_ARRAY_BUFFER,
-                                  nParticles*3,
-                                  GL_DYNAMIC_DRAW);
+        m_P[n] = new SharedBuffer<float3>(GL_ARRAY_BUFFER, nParticles,
+                                          GL_DYNAMIC_DRAW);
     }
     
     P().map();
-    cudaMemcpy(P(), Pinit, nParticles*3*sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(P(), Pinit, nParticles*sizeof(float3), cudaMemcpyHostToDevice);
     P().unmap();
 
-    cudaMalloc( (void**)&m_Fd, nParticles*3*sizeof(float) );
-    cudaMemset( m_Fd, 0, nParticles*3*sizeof(float) );
+    cudaCheckError( cudaMalloc( (void**)&m_Fd, nParticles*sizeof(float3) ) );
+    cudaMemset( m_Fd, 0, nParticles*sizeof(float3) );
     
-    cudaMalloc( (void**)&m_Vd, nParticles*3*sizeof(float) );
-    cudaMemcpy(m_Vd, Vinit, nParticles*3*sizeof(float), cudaMemcpyHostToDevice);
+    cudaCheckError( cudaMalloc( (void**)&m_Vd, nParticles*sizeof(float3) ) );
+    cudaMemcpy(m_Vd, Vinit, nParticles*sizeof(float3), cudaMemcpyHostToDevice);
+    
+    int workSize = reduceWorkSize(nParticles, m_cudaProp) * sizeof(float3);
+    cudaCheckError( cudaMalloc( (void**)&m_Wd, workSize) );
 }
 
 

@@ -3,6 +3,7 @@
 
 #include <time.h>
 
+#include "cudaUtils.h"
 #include "solver.h"
 
 
@@ -15,87 +16,87 @@ namespace Zillion {
 
 // -------------------------------------------------------------------------
 
-float*
-randomFloatArray(int seed, unsigned N)
+float3*
+randomFloat3Array(int seed, unsigned N)
 {
     srand(seed);
     
-    float* data = new float[N];
+    float3* data = new float3[N];
     for(unsigned n = 0; n < N; n++)
-        data[n] = frand();
+    {
+        float3& d = data[n];
+        d.x = frand();
+        d.y = frand();
+        d.z = frand();
+    }
     
     return data;
 }
 
 
 void
-minFloat3CPU(float* minimum, const float* P, unsigned N)
+minFloat3CPU(float3& result, const float3* P, unsigned N)
 {
     if(N == 0)
         return;
     
-    float x = std::numeric_limits<float>::max();
-    float y = std::numeric_limits<float>::max();
-    float z = std::numeric_limits<float>::max();
+    float3 m = {std::numeric_limits<float>::max(),
+                std::numeric_limits<float>::max(),
+                std::numeric_limits<float>::max()};
     
-    const float* p = P;
-    for(unsigned n = 0; n < N; n++, p += 3)
+    for(unsigned n = 0; n < N; n++)
     {
-        if(p[0] < x) x = p[0];
-        if(p[1] < y) y = p[1];
-        if(p[2] < z) z = p[2];
+        const float3& p = P[n];
+        
+        if(p.x < m.x) m.x = p.x;
+        if(p.y < m.y) m.y = p.y;
+        if(p.z < m.z) m.z = p.z;
     }
     
-    minimum[0] = x;
-    minimum[1] = y;
-    minimum[2] = z;
+    result = m;
 }
 
 
 void
-maxFloat3CPU(float* minimum, const float* P, unsigned N)
+maxFloat3CPU(float3& result, const float3* P, unsigned N)
 {
     if(N == 0)
         return;
     
-    float x = -std::numeric_limits<float>::max();
-    float y = -std::numeric_limits<float>::max();
-    float z = -std::numeric_limits<float>::max();
+    float3 m = {-std::numeric_limits<float>::max(),
+                -std::numeric_limits<float>::max(),
+                -std::numeric_limits<float>::max()};
     
-    const float* p = P;
-    for(unsigned n = 0; n < N; n++, p += 3)
+    for(unsigned n = 0; n < N; n++)
     {
-        if(p[0] > x) x = p[0];
-        if(p[1] > y) y = p[1];
-        if(p[2] > z) z = p[2];
+        const float3& p = P[n];
+        
+        if(p.x > m.x) m.x = p.x;
+        if(p.y > m.y) m.y = p.y;
+        if(p.z > m.z) m.z = p.z;
     }
     
-    minimum[0] = x;
-    minimum[1] = y;
-    minimum[2] = z;
+    result = m;
 }
 
 void
-sumFloat3CPU(float* minimum, const float* P, unsigned N)
+sumFloat3CPU(float3& result, const float3* P, unsigned N)
 {
     if(N == 0)
         return;
     
-    float x = 0;
-    float y = 0;
-    float z = 0;
+    float3 sum = {0, 0, 0};
     
-    const float* p = P;
-    for(unsigned n = 0; n < N; n++, p += 3)
+    for(unsigned n = 0; n < N; n++)
     {
-        x += p[0];
-        y += p[1];
-        z += p[2];
+        const float3& p = P[n];
+        
+        sum.x += p.x;
+        sum.y += p.y;
+        sum.z += p.z;
     }
     
-    minimum[0] = x;
-    minimum[1] = y;
-    minimum[2] = z;
+    result = sum;
 }
 
 
@@ -103,13 +104,13 @@ void
 minTest(int N, int seed, int cudaDevice)
 {
     std::cout << "N = " << N << std::endl;
-    const float* P = randomFloatArray(seed, N*3);
+    const float3* P = randomFloat3Array(seed, N);
     
     // CPU
     
     std::cout << "Calculating minimum on CPU" << std::endl;
     
-    float minCPU[3] = {0, 0, 0};
+    float3 minCPU;
     
     clock_t cpuStart = clock();
     minFloat3CPU(minCPU, P, N);
@@ -123,52 +124,43 @@ minTest(int N, int seed, int cudaDevice)
     cudaDeviceProp prop;
     cudaGetDeviceProperties(&prop, cudaDevice);
     
-    float* work_d[2] = {NULL, NULL};
-    int workSize = reduceWorkSize(N,prop)*3*sizeof(float);
+    float3* d_work;
+    cudaCheckError( cudaMalloc( (void**)&d_work,
+                                reduceWorkSize(N,prop)*sizeof(float3) ) );
     
-    for(int n = 0; n < 2; n++)
-    {
-        cudaError_t status = cudaMalloc( (void**)&work_d[n], workSize);
-        if(status == cudaErrorMemoryAllocation)
-        {
-            std::cerr << "Error allocating graphics memory" << std::endl;
-            return;
-        }
-    }
+    cudaMemcpy(d_work, P, N*3*sizeof(float), cudaMemcpyHostToDevice);
     
-    cudaMemcpy(work_d[0], P, N*3*sizeof(float), cudaMemcpyHostToDevice);
-    
-    float minCUDA[3];
+    float3 minCUDA;
     
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     
     cudaEventRecord(start);
-    minFloat3(minCUDA, work_d, N, prop);
+    minFloat3(minCUDA, d_work, N, prop);
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
     
     float gpuElapsed;
     cudaEventElapsedTime(&gpuElapsed, start, stop);
     
-    for(int n = 0; n < 2; n++)
-        cudaFree(work_d[n]);
+    cudaFree(d_work);
     
     // Check and report
     
-    std::cout << "CPU min: " << minCPU[0] << ", "
-                             << minCPU[1] << ", "
-                             << minCPU[2] << std::endl;
+    std::cout << "CPU min: " << minCPU.x << ", "
+                             << minCPU.y << ", "
+                             << minCPU.z << std::endl;
     
-    std::cout << "GPU min: " << minCUDA[0] << ", "
-                             << minCUDA[1] << ", "
-                             << minCUDA[2] << std::endl;
+    std::cout << "GPU min: " << minCUDA.x << ", "
+                             << minCUDA.y << ", "
+                             << minCUDA.z << std::endl;
     
     
-    bool match = true;
-    for(unsigned i = 0; i < 3; i++)
-        match = match && (fabs(minCPU[i] - minCUDA[i]) < 1e-6);
+    float3 diff = minCPU - minCUDA;
+    bool match = (fabs(diff.x) < 1e-6) &&
+                 (fabs(diff.y) < 1e-6) &&
+                 (fabs(diff.z) < 1e-6);
     
     if(!match)
         std::cerr << "ERROR! CPU and GPU results do not match!" << std::endl;

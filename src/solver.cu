@@ -3,6 +3,14 @@
 
 #include <assert.h>
 
+#include "cudaUtils.h"
+
+#define SOLVER_DIAGNOSTICS (0)
+
+namespace Zillion {
+
+// ---------------------------------------------------------------------------
+    
 __device__
 float3&
 unpack(float* array, unsigned n)
@@ -17,139 +25,6 @@ unpack(const float* array, unsigned n)
 {
     return *(const float3*)&array[n*3];
 }
-
-
-inline
-__host__
-__device__
-float3&
-operator*=(float3& a, float b)
-{
-    a.x *= b;
-    a.y *= b;
-    a.z *= b;
-    
-    return a;
-}
-
-
-inline
-__host__
-__device__
-float3
-operator*(const float3& a, float b)
-{
-    float3 v;
-    v.x = a.x*b;
-    v.y = a.y*b;
-    v.z = a.z*b;
-    
-    return v;
-}
-
-
-inline
-__host__
-__device__
-float3
-operator*(float a, const float3& b)
-{
-    float3 v;
-    v.x = b.x*a;
-    v.y = b.y*a;
-    v.z = b.z*a;
-    
-    return v;
-}
-
-
-inline
-__host__
-__device__
-float3
-operator+(const float3& a, const float3& b)
-{
-    float3 v;
-    v.x = a.x+b.x;
-    v.y = a.y+b.y;
-    v.z = a.z+b.z;
-    
-    return v;
-}
-
-
-inline
-__host__
-__device__
-float3&
-operator+=(float3& a, const float3& b)
-{
-    a.x += b.x;
-    a.y += b.y;
-    a.z += b.z;
-    
-    return a;
-}
-
-
-inline
-__host__
-__device__
-float3
-operator-(const float3& a, const float3& b)
-{
-    float3 v;
-    v.x = a.x-b.x;
-    v.y = a.y-b.y;
-    v.z = a.z-b.z;
-    
-    return v;
-}
-
-
-inline
-__host__
-__device__
-float3&
-operator-=(float3& a, const float3& b)
-{
-    a.x -= b.x;
-    a.y -= b.y;
-    a.z -= b.z;
-    
-    return a;
-}
-
-
-inline
-__host__
-__device__
-float
-operator^(const float3& a, const float3& b)
-{
-    return a.x*b.x + a.y*b.y + a.z*b.z;
-}
-
-
-inline
-__host__
-__device__
-float
-operator^(const float4& a, const float3& b)
-{
-    return a.x*b.x + a.y*b.y + a.z*b.z + a.w;
-}
-
-
-inline
-__host__
-__device__
-float
-operator^(const float3& a, const float4& b)
-{
-    return a.x*b.x + a.y*b.y + a.z*b.z + b.w;
-}
-
 
 // ---------------------------------------------------------------------------
 
@@ -178,12 +53,12 @@ roundUpToPower2(int v)
 
 __global__
 void
-accumulateForcesKernel(float* Fd, unsigned N, float m, float g)
+accumulateForcesKernel(float3* Fd, unsigned N, float m, float g)
 {
     unsigned n = blockIdx.x*blockDim.x + threadIdx.x;
     while(n < N)
     {
-        float3& F = unpack(Fd, n);
+        float3& F = Fd[n];
 
         F.x = 0.0f;
         F.y = m*g;
@@ -195,13 +70,13 @@ accumulateForcesKernel(float* Fd, unsigned N, float m, float g)
 
 __host__
 void
-accumulateForces(float* Fd, unsigned N, float m, float g, unsigned nMaxThreadsPerBlock)
+accumulateForces(float3* Fd, unsigned N, float m, float g, unsigned nMaxThreadsPerBlock)
 {
     dim3 dimBlock( std::min(N, nMaxThreadsPerBlock) );
     dim3 dimGrid( (N + nMaxThreadsPerBlock-1) / nMaxThreadsPerBlock );
     
     accumulateForcesKernel<<<dimGrid, dimBlock>>>(Fd, N, m, g);
-    assert(cudaGetLastError() == cudaSuccess);
+    cudaCheckLastError();
 }
 
 
@@ -209,16 +84,16 @@ accumulateForces(float* Fd, unsigned N, float m, float g, unsigned nMaxThreadsPe
 
 __global__
 void
-forwardEulerSolveKernel(float* Pd, float* Vd,
-                        const float* P0d, const float* Fd,
+forwardEulerSolveKernel(float3* Pd, float3* Vd,
+                        const float3* P0d, const float3* Fd,
                         unsigned N,
                         float m, float dt)
 {
     unsigned n = blockIdx.x*blockDim.x + threadIdx.x;
     while(n < N)
     {
-        const float3& F = unpack(Fd, n);
-        float3& V = unpack(Vd, n);
+        const float3& F = Fd[n];
+        float3& V = Vd[n];
         
         // a = F/m
         
@@ -226,8 +101,8 @@ forwardEulerSolveKernel(float* Pd, float* Vd,
         
         V += F * (_1_m * dt);
         
-        const float3& P0 = unpack(P0d, n);
-        float3& P = unpack(Pd, n);
+        const float3& P0 = P0d[n];
+        float3& P = Pd[n];
 
         P = P0 + V*dt;
         
@@ -237,8 +112,8 @@ forwardEulerSolveKernel(float* Pd, float* Vd,
 
 __host__
 void
-forwardEulerSolve(float* Pd, float* Vd,
-                  const float* prevPd, const float* Fd,
+forwardEulerSolve(float3* Pd, float3* Vd,
+                  const float3* prevPd, const float3* Fd,
                   unsigned N, float m, float dt, unsigned nMaxThreadsPerBlock)
 {
     dim3 dimBlock( std::min(N, nMaxThreadsPerBlock) );
@@ -246,7 +121,7 @@ forwardEulerSolve(float* Pd, float* Vd,
     
     forwardEulerSolveKernel<<<dimGrid, dimBlock>>>(Pd, Vd, prevPd, Fd, N,
                                                    m, dt);
-    assert(cudaGetLastError() == cudaSuccess);
+    cudaCheckLastError();
 }
 
 
@@ -255,15 +130,15 @@ forwardEulerSolve(float* Pd, float* Vd,
 
 __global__
 void
-handlePlaneCollisionsKernel(float* Pd, float* Vd, const float* P0d,
+handlePlaneCollisionsKernel(float3* Pd, float3* Vd, const float3* P0d,
                             unsigned N, float r, float dt, float Cr)
 {
     unsigned n = blockIdx.x*blockDim.x + threadIdx.x;
     while(n < N)
     {
-        const float3& P0 = unpack(P0d, n);
-        float3& V = unpack(Vd, n);
-        float3& P = unpack(Pd, n);
+        const float3& P0 = P0d[n];
+        float3& V = Vd[n];
+        float3& P = Pd[n];
         
         const float3 plane = make_float3(0.0f, 1.0f, 0.0f);
         const float d = 0.0f;
@@ -297,7 +172,7 @@ handlePlaneCollisionsKernel(float* Pd, float* Vd, const float* P0d,
 
 __host__
 void
-handlePlaneCollisions(float* Pd, float* Vd, const float* P0d,
+handlePlaneCollisions(float3* Pd, float3* Vd, const float3* P0d,
                       unsigned N, float r, float dt, float Cr,
                       unsigned nMaxThreadsPerBlock)
 {
@@ -305,48 +180,44 @@ handlePlaneCollisions(float* Pd, float* Vd, const float* P0d,
     dim3 dimGrid( (N + nMaxThreadsPerBlock-1) / nMaxThreadsPerBlock );
     
     handlePlaneCollisionsKernel<<<dimGrid, dimBlock>>>(Pd, Vd, P0d, N, r, dt, Cr);
-    assert(cudaGetLastError() == cudaSuccess);
+    cudaCheckLastError();
 }
 
 // ---------------------------------------------------------------------------
 
 __global__
 void
-fillKernel(float* Pd, const float3 v)
+fillKernel(float3* Pd, const float3 v)
 {
-    float3& dest = unpack(Pd, threadIdx.x);
-    
-    dest = v;
+    Pd[threadIdx.x] = v;
 }
 
 
 template<class Op>
 __global__
 void
-float3ReduceKernel(float* out_d, const float* in_d)
+float3ReduceKernel(float3* out_d, const float3* in_d)
 {
-    extern __shared__ float sm[];
+    extern __shared__ float3 sm[];
     
     // Each thread loads one element from the position array into shared mem
-    const int tid = threadIdx.x * 3;
-    const int i = (blockIdx.x*blockDim.x + threadIdx.x)*3;
+    const int tid = threadIdx.x;
+    const int i = blockIdx.x*blockDim.x + threadIdx.x;
     
-    sm[tid]   = in_d[i];
-    sm[tid+1] = in_d[i+1];
-    sm[tid+2] = in_d[i+2];
+    sm[tid] = in_d[i];
 
     __syncthreads();
     
-    int s = (blockDim.x/2) * 3;
+    int s = (blockDim.x/2);
  
-    for(; s >= 3; s >>= 1)
+    for(; s >= 1; s >>= 1)
     {
         if(tid < s)
         {
-            float* a = sm + tid;
-            const float* b = a + s;
+            float3* a = sm + tid;
+            const float3* b = a + s;
             
-            Op::doIt(a, b);
+            Op::doIt(*a, *b);
         }
         
         __syncthreads();
@@ -355,13 +226,7 @@ float3ReduceKernel(float* out_d, const float* in_d)
     
     // Write result to global memory
     if(tid == 0)
-    {
-        const int bid = blockIdx.x * 3;
-  
-        out_d[bid]   = sm[0];
-        out_d[bid+1] = sm[1];
-        out_d[bid+2] = sm[2];
-    }
+        out_d[blockIdx.x] = sm[0];
 };
 
 
@@ -376,65 +241,74 @@ reduceDims(int& nBlocks, int& nThreads, const int N, const cudaDeviceProp& prop)
     
     nBlocks = (N + nThreads-1) / nThreads;
     
-    assert(nBlocks <= prop.maxGridSize[0]);
+    //assert(nBlocks <= prop.maxGridSize[0]);
 }
 
 
 __host__
 unsigned
-reduceWorkSize(const int N, const cudaDeviceProp& prop)
+reduceWorkSize(int N, const cudaDeviceProp& prop)
 {
-    int nBlocks = 0, nThreads = 0;
-    reduceDims(nBlocks, nThreads, N, prop);
+    int total = 0;
     
-    return nBlocks * nThreads;
+    for(int n = 0; n < 2; n++)
+    {
+        int nBlocks, nThreads;
+        reduceDims(nBlocks, nThreads, N, prop);
+    
+        total += nBlocks * nThreads;
+        
+        N = nBlocks;
+    }
+    
+    return total;
 }
 
 
 template<class Op>
 __host__
 unsigned
-float3ReducePass(float* out_d, float* in_d, int N, const cudaDeviceProp& prop)
+float3ReducePass(float3* d_out, float3* d_in, int N, const cudaDeviceProp& prop)
 {
     int nBlocks = 0, nThreads = 0;
     reduceDims(nBlocks, nThreads, N, prop);
     
     int nResidualThreads = (nBlocks * nThreads) - N;
     
+#if SOLVER_DIAGNOSTICS
     std::cout << "N: " << N 
               << ", Blocks: " << nBlocks
               << ", Threads: " << nThreads
               << ", Residual: " << nResidualThreads << std::endl;
-    
+#endif
     
     if(nResidualThreads > 0)
     {
-        fillKernel<<<dim3(1), dim3(nResidualThreads)>>>(in_d+(N*3), Op::padding);
-        assert(cudaGetLastError() == cudaSuccess);
+        fillKernel<<<1, nResidualThreads>>>(d_in+N, Op::padding);
+        cudaCheckLastError();
     }
     
-    dim3 dimBlock(nThreads);
-    dim3 dimGrid(nBlocks);
-    
-    int nAllocSharedMemPerBlock = nThreads * 3 * sizeof(float);
-    assert(nAllocSharedMemPerBlock < prop.sharedMemPerBlock);
-    
+#if SOLVER_DIAGNOSTICS
     cudaEvent_t start, stop;
     cudaEventCreate(&start);
     cudaEventCreate(&stop);
     
     cudaEventRecord(start);
-  
-    float3ReduceKernel<Op><<<dimGrid, dimBlock, nAllocSharedMemPerBlock>>>(out_d, in_d);
-    assert(cudaGetLastError() == cudaSuccess);
+#endif
     
+    int nAllocSharedMemPerBlock = nThreads * sizeof(float3);
+    float3ReduceKernel<Op><<<nBlocks, nThreads, nAllocSharedMemPerBlock>>>(d_out, d_in);
+    cudaCheckLastError();
+    
+#if SOLVER_DIAGNOSTICS
     cudaEventRecord(stop);
     cudaEventSynchronize(stop);
-    
+
     float gpuElapsed;
     cudaEventElapsedTime(&gpuElapsed, start, stop);
     
     std::cout << "GPU time: " << gpuElapsed << " ms" << std::endl;
+#endif
     
     return nBlocks;
 };
@@ -443,21 +317,27 @@ float3ReducePass(float* out_d, float* in_d, int N, const cudaDeviceProp& prop)
 template<class Op>
 __host__
 void
-float3Reduce(float* result, float** work_d, int N, const cudaDeviceProp& prop)
+float3Reduce(float3& result, float3* d_work, int N, const cudaDeviceProp& prop)
 {
+    int nBlocks, nThreads;
+    reduceDims(nBlocks, nThreads, N, prop);
+    int firstPassSize = nBlocks * nThreads;
+    
+    float3* d_W[2] = {d_work, d_work + firstPassSize};
+    
     int i = 0;
     while(N > 1)
     {
-        float* out_d = work_d[1-i];
-        float* in_d = work_d[i];
+        float3* d_out = d_W[1-i];
+        float3* d_in = d_W[i];
         
-        N = float3ReducePass<Op>(out_d, in_d, N, prop);
+        N = float3ReducePass<Op>(d_out, d_in, N, prop);
         
         // Alternate buffers
         i = 1-i;
     }
     
-    cudaMemcpy(result, work_d[i], 3*sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&result, d_W[i], sizeof(float3), cudaMemcpyDeviceToHost);
 }
 
 
@@ -470,24 +350,24 @@ struct MinReductionOp
     static inline
     __device__
     void
-    doIt(float* a, const float* b)
+    doIt(float3& a, const float3& b)
     {
         {
-            const float Xa = a[0], Xb = b[0];
+            const float Xa = a.x, Xb = b.x;
             if(Xb < Xa)
-                a[0] = Xb;
+                a.x = Xb;
         }
 
         {
-            const float Ya = a[1], Yb = b[1];
+            const float Ya = a.y, Yb = b.y;
             if(Yb < Ya)
-                a[1] = Yb;
+                a.y = Yb;
         }
 
         {
-            const float Za = a[2], Zb = b[2];
+            const float Za = a.z, Zb = b.z;
             if(Zb < Za)
-                a[2] = Zb;
+                a.z = Zb;
         }
     }
 };
@@ -500,9 +380,9 @@ float3 MinReductionOp::padding = {std::numeric_limits<float>::max(),
 
 __host__
 void
-minFloat3(float* result, float** work_d, int N, const cudaDeviceProp& prop)
+minFloat3(float3& result, float3* d_work, int N, const cudaDeviceProp& prop)
 {
-    float3Reduce<MinReductionOp>(result, work_d, N, prop);
+    float3Reduce<MinReductionOp>(result, d_work, N, prop);
 }
 
 
@@ -515,24 +395,24 @@ struct MaxReductionOp
     static inline
     __device__
     void
-    doIt(float* a, const float* b)
+    doIt(float3& a, const float3& b)
     {
         {
-            const float Xa = a[0], Xb = b[0];
+            const float Xa = a.x, Xb = b.x;
             if(Xb > Xa)
-                a[0] = Xb;
+                a.x = Xb;
         }
 
         {
-            const float Ya = a[1], Yb = b[1];
+            const float Ya = a.y, Yb = b.y;
             if(Yb > Ya)
-                a[1] = Yb;
+                a.y = Yb;
         }
 
         {
-            const float Za = a[2], Zb = b[2];
+            const float Za = a.z, Zb = b.z;
             if(Zb > Za)
-                a[2] = Zb;
+                a.z = Zb;
         }
     }
 };
@@ -545,9 +425,9 @@ float3 MaxReductionOp::padding = {-std::numeric_limits<float>::max(),
 
 __host__
 void
-maxFloat3(float* result, float** work_d, int N, const cudaDeviceProp& prop)
+maxFloat3(float3& result, float3* d_work, int N, const cudaDeviceProp& prop)
 {
-    float3Reduce<MaxReductionOp>(result, work_d, N, prop);
+    float3Reduce<MaxReductionOp>(result, d_work, N, prop);
 }
 
 
@@ -561,11 +441,9 @@ struct SumReductionOp
     static inline
     __device__
     void
-    doIt(float* a, const float* b)
+    doIt(float3& a, const float3& b)
     {
-        a[0] += b[0];
-        a[1] += b[1];
-        a[2] += b[2];
+        a += b;
     }
 };
 
@@ -575,7 +453,11 @@ float3 SumReductionOp::padding = {0.0, 0.0, 0.0};
 
 __host__
 void
-sumFloat3(float* result, float** work_d, int N, const cudaDeviceProp& prop)
+sumFloat3(float3& result, float3* d_work, int N, const cudaDeviceProp& prop)
 {
-    float3Reduce<SumReductionOp>(result, work_d, N, prop);
+    float3Reduce<SumReductionOp>(result, d_work, N, prop);
 }
+
+// ---------------------------------------------------------------------------
+
+} // END NAMESPACE ZILLION

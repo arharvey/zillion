@@ -3,43 +3,43 @@
 
 #include <cuda_runtime.h>
 
-//namespace Zillion {
+namespace Zillion {
     
 // ---------------------------------------------------------------------------
     
 void
-accumulateForces(float* Fd, unsigned N, float m, float g,
+accumulateForces(float3* Fd, unsigned N, float m, float g,
                  unsigned nMaxThreadsPerBlock);
 
 void
-forwardEulerSolve(float* Pd, float* Vd,
-                  const float* prevPd, const float* Fd, unsigned N,
+forwardEulerSolve(float3* Pd, float3* Vd,
+                  const float3* prevPd, const float3* Fd, unsigned N,
                   float m, float dt,
                   unsigned nMaxThreadsPerBlock);
 
 void
-handlePlaneCollisions(float* Pd, float* Vd, const float* P0d,
+handlePlaneCollisions(float3* Pd, float3* Vd, const float3* P0d,
                             unsigned N, float r, float dt, float Cr,
                             unsigned nMaxThreadsPerBlock);
     
 unsigned
-reduceWorkSize(const int N, const cudaDeviceProp& prop);
+reduceWorkSize(int N, const cudaDeviceProp& prop);
 
 
 extern void
-minFloat3(float* result, float** work_d, int N, const cudaDeviceProp& prop);
+minFloat3(float3& result, float3* d_work, int N, const cudaDeviceProp& prop);
 
 
 extern void
-maxFloat3(float* result, float** work_d, int N, const cudaDeviceProp& prop);
+maxFloat3(float3& result, float3* d_work, int N, const cudaDeviceProp& prop);
 
 
 extern void
-sumFloat3(float* result, float** work_d, int N, const cudaDeviceProp& prop);
+sumFloat3(float3& result, float3* d_work, int N, const cudaDeviceProp& prop);
     
     
 // --------------------------------------------------------------------------- 
     
-//} // END NAMESPACE ZILLION
+} // END NAMESPACE ZILLION
 
 #endif
