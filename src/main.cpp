@@ -506,7 +506,7 @@ run()
         initPositions(Pinit, nDimNum, GRID_SIZE, Imath::V3f(0.0, 0.75, 0.0), 1.0);
                 
         float3* Vinit = new float3[nParticles];
-        initVelocities(Vinit, Pinit, nParticles, 0.8, Imath::V3f(0.0, 0.0, 0.0));
+        initVelocities(Vinit, Pinit, nParticles, 0.0, Imath::V3f(0.0, 0.0, 0.0));
         
         SimulationCUDA sim(g_cudaDevice, Pinit, Vinit, nParticles, particleRadius);
         

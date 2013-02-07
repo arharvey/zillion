@@ -9,6 +9,7 @@ namespace Zillion {
 
 namespace {
     const unsigned MAX_OCCUPANCY = 2; // Particles per cell
+    const unsigned MAX_WORK_IDS = 9*MAX_OCCUPANCY;
 } // END ANONYMOUS NAMESPACE
     
 
@@ -35,6 +36,12 @@ populateCollisionGrid(int* d_G, int* d_GN, const float3* const d_P,
                       const int N, const float3 origin, 
                       const int3 dims, const float cellSize,
                       const cudaDeviceProp& prop);
+
+void
+resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
+                 const float3* const d_P, const int N, 
+                 const float3 origin, const int3 dims, const float r,
+                 const cudaDeviceProp& prop);
 
     
 unsigned

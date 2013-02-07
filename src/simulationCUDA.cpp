@@ -92,28 +92,22 @@ SimulationCUDA::stepForward(double dt)
     
     accumulateForces(m_Fd, m_nParticles, MASS, GRAVITY, m_cudaProp);
     
-    forwardEulerSolve(P(), m_Vd, prevP(), m_Fd, m_nParticles, MASS, dt,
-                      m_cudaProp);
-    
-    handlePlaneCollisions(P(), m_Vd, prevP(), m_nParticles, m_particleRadius,
-                          dt, RESTITUTION, m_cudaProp);
-    
     // Get extents
     float3 minExtent, maxExtent;
     
-    cudaMemcpy(m_Wd, P(), m_nParticles*sizeof(float3), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(m_Wd, prevP(), m_nParticles*sizeof(float3), cudaMemcpyDeviceToDevice);
     minFloat3(minExtent, m_Wd, m_nParticles, m_cudaProp);
     
-    cudaMemcpy(m_Wd, P(), m_nParticles*sizeof(float3), cudaMemcpyDeviceToDevice);
+    cudaMemcpy(m_Wd, prevP(), m_nParticles*sizeof(float3), cudaMemcpyDeviceToDevice);
     maxFloat3(maxExtent, m_Wd, m_nParticles, m_cudaProp);
     
     // Work out extents of particle system
-    const float3 halfParticle = make_float3(m_particleRadius,
+    const float3 gridPadding = make_float3(m_particleRadius,
                                             m_particleRadius,
-                                            m_particleRadius);
+                                            m_particleRadius) * 2;
     
-    minExtent -= halfParticle;
-    maxExtent += halfParticle;
+    minExtent -= gridPadding;
+    maxExtent += gridPadding;
     
     float3 range = maxExtent - minExtent;
     
@@ -140,13 +134,22 @@ SimulationCUDA::stepForward(double dt)
     cudaMemset(m_GNd, 0, nCells*sizeof(int));
     
     // Populate collision grid with particles
-    populateCollisionGrid(m_Gd, m_GNd, P(), m_nParticles,
+    populateCollisionGrid(m_Gd, m_GNd, prevP(), m_nParticles,
                           minExtent, collDims, cellSize, m_cudaProp);
     
     // DEBUG: Sanity check grid
 #if SANITY_CHECK_COLLISION_GRID
     sanityCheckCollisionGrid(nCells);
 #endif
+    
+    resolveCollisions(m_Fd, m_Gd, m_GNd, prevP(), m_nParticles,
+                      minExtent, collDims, m_particleRadius, m_cudaProp);
+    
+    forwardEulerSolve(P(), m_Vd, prevP(), m_Fd, m_nParticles, MASS, dt,
+                      m_cudaProp);
+    
+    handlePlaneCollisions(P(), m_Vd, prevP(), m_nParticles, m_particleRadius,
+                          dt, RESTITUTION, m_cudaProp);
     
     P().unmap();
     prevP().unmap();

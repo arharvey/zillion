@@ -146,7 +146,6 @@ handlePlaneCollisionsKernel(float3* Pd, float3* Vd, const float3* P0d,
     unsigned n = blockIdx.x*blockDim.x + threadIdx.x;
     while(n < N)
     {
-        const float3& P0 = P0d[n];
         float3& V = Vd[n];
         float3& P = Pd[n];
         
@@ -196,30 +195,35 @@ handlePlaneCollisions(float3* Pd, float3* Vd, const float3* P0d,
 
 // ---------------------------------------------------------------------------
 
+inline
+__device__
+int
+cellIndex(const float3& P, const float3& origin, const int3& dims,
+          const float cellSize)
+{
+    float3 I = P;
+    I -= origin;
+    I *= 1.0/cellSize;
+
+    return int(I.x) + int(I.y)*dims.x + int(I.z)*dims.x*dims.y;
+}
+
+
 __global__
 void
 populateCollisionGridKernel(int* d_G, int* d_GN, const float3* const d_P,
                         const int N, const float3 origin, 
                         const int3 dims, const float cellSize)
 {
-    const float M = 1.0f/cellSize;
-    
     int n = blockIdx.x*blockDim.x + threadIdx.x;
     while(n < N)
     {
-        // Calculate grid index
-        float3 I = d_P[n];
-        I -= origin;
-        I *= M;
+        const int cell = cellIndex(d_P[n], origin, dims, cellSize);
         
-        const int cellIndex = int(I.x) +
-                              int(I.y)*dims.x +
-                              int(I.z)*dims.x*dims.y;
-        
-        const int i = atomicAdd(d_GN+cellIndex, 1);
+        const int i = atomicAdd(d_GN+cell, 1);
         if(i < MAX_OCCUPANCY)
         {
-            int* out = d_G + cellIndex*MAX_OCCUPANCY;
+            int* out = d_G + cell*MAX_OCCUPANCY;
             out[i] = n;
         }
         
@@ -242,6 +246,115 @@ populateCollisionGrid(int* d_G, int* d_GN, const float3* const d_P,
                                                    origin, dims, cellSize);
     cudaCheckLastError();
 }
+
+
+// ---------------------------------------------------------------------------
+
+
+__global__
+void
+resolveCollisionsKernel(float3* d_F, const int* const d_G, const int* const d_GN,
+                 const float3* const d_P, const int N, 
+                 const float3 origin, const int3 dims, const float r)
+{
+    extern __shared__ int ids[];
+    
+    const int strideY = dims.x;
+    const int strideZ = dims.x*dims.y;
+    
+    const float minDistSq = 4*r*r;
+    
+    int n = blockIdx.x*blockDim.x + threadIdx.x;
+    while(n < N)
+    {
+        float3 F = make_float3(0, 0, 0);
+        
+        const float3 P = d_P[n];
+        const int central = cellIndex(P, origin, dims, r);
+        
+        for(int j = -strideY; j <= strideY; j += strideY)
+        {
+            int collisions = 0;
+            
+            for(int k = -strideZ; k <= strideZ; k += strideZ)
+            {
+                for(int i = -1; i <= 1; ++i)
+                {
+                    const int cell = central + i + j + k;
+                    
+                    int count = d_GN[cell];
+                    if(count > MAX_OCCUPANCY)
+                        count = MAX_OCCUPANCY;
+                    
+                    const int* cellIds = d_G + cell*MAX_OCCUPANCY;
+                    for(int m = 0; m < count; ++m)
+                    {
+                        const int id = cellIds[m];
+                        
+                        // Cannot collide with self!
+                        if(id != n)
+                        {
+                            // Avoid shared bank conflicts
+                            ids[blockDim.x*collisions + threadIdx.x] = id;
+                            ++collisions;
+                        }
+                    }
+                }
+            }
+            
+            // Now process queued collisions
+            for(int c = 0; c < collisions; ++c)
+            {
+                const int otherParticle = ids[blockDim.x*c + threadIdx.x];
+                const float3 otherP = d_P[otherParticle];
+
+                float3 d = P - otherP;
+                const float distSq = d^d;
+                if(distSq < minDistSq)
+                {
+                    // We have a collision! Push particles away from each other
+                    d *= 1.0/sqrt(distSq);
+
+                    F += 5.0f * d;
+                }
+            }
+        }
+        
+        d_F[n] += F;
+        
+        n += blockDim.x * gridDim.x;
+    }
+}
+
+
+__host__
+void
+resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
+                 const float3* const d_P, const int N, 
+                 const float3 origin, const int3 dims, const float r,
+                 const cudaDeviceProp& prop)
+{
+    int nBlocks, nThreads, nShared;
+    
+    int nMaxThreadsPerBlock = prop.sharedMemPerBlock / (MAX_WORK_IDS * sizeof(int));
+    
+    // Round down threads to nearest warp size and ensure it is within
+    // sensible bounds
+    nMaxThreadsPerBlock &= ~(prop.warpSize-1);
+
+    nThreads = std::min(nMaxThreadsPerBlock, 128);
+    assert(nThreads > 0);
+    
+    nBlocks = (N + nThreads-1) / nThreads;
+    nShared = nThreads * (MAX_WORK_IDS * sizeof(int));
+    
+    //std::cout << nBlocks << " " << nThreads << " " << nShared << std::endl;
+    
+    resolveCollisionsKernel<<<nBlocks, nThreads, nShared>>>
+            (d_F, d_G, d_GN, d_P, N, origin, dims, r);
+    cudaCheckLastError();
+}
+
 
 // ---------------------------------------------------------------------------
 
