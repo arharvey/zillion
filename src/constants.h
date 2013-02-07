@@ -6,9 +6,9 @@
 namespace Zillion {
 namespace {
 
-const unsigned GRID_DIM = 20;
-const float GRID_SIZE = 2.0;
-const float PARTICLE_SIZE_RELATIVE_TO_GRID_CELL = 0.5;
+const unsigned GRID_DIM = 4;
+const float GRID_SIZE = 0.4;
+const float PARTICLE_SIZE_RELATIVE_TO_GRID_CELL = 1.0;
 
 const unsigned COLLISION_GRID_MAX_SIZE = 64; // In MB
 
@@ -22,9 +22,9 @@ const float FOV = toRadians(60.0);
     
 const float GRAVITY = -4;
 const float MASS = 1;
-const float RESTITUTION = 0.2;
+const float RESTITUTION = 0.4;
 const float STATIC_FRICTION = 1;
-const float KINETIC_FRICTION = 1;
+const float KINETIC_FRICTION = 0.1;
     
 } // END NAMESPACE ANONYMOUS
 } // END NAMESPACE ZILLION

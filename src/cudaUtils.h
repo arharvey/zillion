@@ -106,6 +106,20 @@ operator+=(float3& a, const float3& b)
 inline
 __host__
 __device__
+float3&
+operator-=(float3& a, const float3& b)
+{
+    a.x -= b.x;
+    a.y -= b.y;
+    a.z -= b.z;
+    
+    return a;
+}
+
+
+inline
+__host__
+__device__
 float3
 operator-(const float3& a, const float3& b)
 {
@@ -115,20 +129,6 @@ operator-(const float3& a, const float3& b)
     v.z = a.z-b.z;
     
     return v;
-}
-
-
-inline
-__host__
-__device__
-float3&
-operator-=(float3& a, const float3& b)
-{
-    a.x -= b.x;
-    a.y -= b.y;
-    a.z -= b.z;
-    
-    return a;
 }
 
 
@@ -160,6 +160,21 @@ operator^(const float3& a, const float4& b)
 {
     return a.x*b.x + a.y*b.y + a.z*b.z + b.w;
 }
+
+
+
+#if defined(__CUDACC__)
+
+inline
+__host__
+__device__
+float3
+normalized(const float3& a)
+{
+    return a * rsqrtf(a^a);
+}
+
+#endif
 
 
 inline __host__

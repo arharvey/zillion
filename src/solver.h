@@ -35,8 +35,8 @@ resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
 
 
 void
-handlePlaneCollisions(float3* Pd, float3* Vd, unsigned N, float r, float dt,
-                      float restitution, float dynamicFriction,
+handlePlaneCollisions(float3* Pd, float3* Vd, float3* Fd, unsigned N, float r,
+                      const float3& plane, float restitution, float dynamicFriction,
                       const cudaDeviceProp& prop);
 
 

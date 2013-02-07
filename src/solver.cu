@@ -159,7 +159,7 @@ resolveCollisionsKernel(float3* d_F, const int* const d_G, const int* const d_GN
     const int strideY = dims.x;
     const int strideZ = dims.x*dims.y;
     
-    const float minDistSq = 4*r*r;
+    const float minDistSq = 4.0f*r*r;
     
     int n = blockIdx.x*blockDim.x + threadIdx.x;
     while(n < N)
@@ -169,6 +169,9 @@ resolveCollisionsKernel(float3* d_F, const int* const d_G, const int* const d_GN
         const float3 P = d_P[n];
         const int central = cellIndex(P, origin, dims, r);
         
+        // We gather all the collisions in horizontal groups (X & Z dimensions),
+        // as the particles are more likely to be distributed horizontally than
+        // vertically. This of course is just a heuristic :)
         for(int j = -strideY; j <= strideY; j += strideY)
         {
             int collisions = 0;
@@ -210,7 +213,7 @@ resolveCollisionsKernel(float3* d_F, const int* const d_G, const int* const d_GN
                 if(distSq < minDistSq)
                 {
                     // We have a collision! Push particles away from each other
-                    d *= 1.0/sqrt(distSq);
+                    d *= rsqrtf(distSq);
 
                     F += 5.0f * d;
                 }
@@ -257,38 +260,51 @@ resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
 
 __global__
 void
-handlePlaneCollisionsKernel(float3* Pd, float3* Vd,
-                            unsigned N, float r, float dt,
+handlePlaneCollisionsKernel(float3* Pd, float3* Vd, float3* Fd,
+                            unsigned N, float r, const float3 plane,
                             float restitution, float kineticFriction)
 {
     unsigned n = blockIdx.x*blockDim.x + threadIdx.x;
     while(n < N)
     {
-        float3& V = Vd[n];
-        float3& P = Pd[n];
+        float3 P = Pd[n];
         
-        const float3 plane = make_float3(0.0f, 1.0f, 0.0f);
         const float d = 0.0f;
-        
         const float distanceFromPlane = (plane ^ P) - d - r;
         
         // Have we collided with the plane?
-        if(distanceFromPlane <= 1e-6f)
+        if(distanceFromPlane < 1e-4)
         {
+            float3 V = Vd[n];
             const float perpSpeed = (V ^ plane);
             
             // Components of velocity perpendicular and tangent to plane
             const float3 Vp = perpSpeed * plane;
             const float3 Vt = V-Vp;
+            V = Vt;
+            
+            float3 F = Fd[n];
+            
+            const float perpForce = (F ^ plane);
+            const float3 Fp = perpForce * plane;
+            F -= Fp; // Equal and opposite reaction
             
             // Bounce or contact?
-            V = Vt;
-            if(perpSpeed < -0.1f) // Elastic collision
+            if(perpSpeed < -1e-1f) // Elastic collision
                 V -= Vp*restitution;
             else                  // Contact collision
-                V *= (1.0f - kineticFriction*dt);
+            {
+                if((V^V) > 1e-8)
+                {
+                    if(perpForce < 0.0f)
+                        F -= (-perpForce * kineticFriction) * normalized(V);
+                }
+            }
             
-            P.y = r;
+            F += plane * 1.0f;
+            
+            Fd[n] = F;
+            Vd[n] = V;
         }
         
         n += blockDim.x * gridDim.x;
@@ -299,15 +315,15 @@ handlePlaneCollisionsKernel(float3* Pd, float3* Vd,
 
 __host__
 void
-handlePlaneCollisions(float3* Pd, float3* Vd,
-                      unsigned N, float r, float dt,
+handlePlaneCollisions(float3* Pd, float3* Vd, float3* Fd,
+                      unsigned N, float r, const float3& plane,
                       float restitution, float kineticFriction,
                       const cudaDeviceProp& prop)
 {
     int nBlocks, nThreads;
     calcDims(nBlocks, nThreads, N, prop);
     
-    handlePlaneCollisionsKernel<<<nBlocks, nThreads>>>(Pd, Vd, N, r, dt,
+    handlePlaneCollisionsKernel<<<nBlocks, nThreads>>>(Pd, Vd, Fd, N, r, plane,
                                                        restitution,
                                                        kineticFriction);
     cudaCheckLastError();

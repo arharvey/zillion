@@ -145,11 +145,35 @@ SimulationCUDA::stepForward(double dt)
     resolveCollisions(m_Fd, m_Gd, m_GNd, prevP(), m_nParticles,
                       minExtent, collDims, m_particleRadius, m_cudaProp);
     
+    const float3 groundPlane = make_float3(0.0, 1.0, 0.0);
+    handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
+                          groundPlane,
+                          RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+    
+    const float _1_R2 = 1.0f/sqrtf(2.0);
+    float3 rampPlane = make_float3(-_1_R2, _1_R2, 0.0);
+    handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
+                          rampPlane,
+                          RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+    
+    rampPlane = make_float3(_1_R2, _1_R2, 0.0);
+    handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
+                          rampPlane,
+                          RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+    
+    rampPlane = make_float3(0, _1_R2, _1_R2);
+    handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
+                          rampPlane,
+                          RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+    
+    rampPlane = make_float3(0, _1_R2, -_1_R2);
+    handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
+                          rampPlane,
+                          RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+    
     forwardEulerSolve(P(), m_Vd, prevP(), m_Fd, m_nParticles, MASS, dt,
                       m_cudaProp);
     
-    handlePlaneCollisions(P(), m_Vd, m_nParticles, m_particleRadius,
-                          dt, RESTITUTION, KINETIC_FRICTION, m_cudaProp);
     
     P().unmap();
     prevP().unmap();
