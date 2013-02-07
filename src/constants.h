@@ -23,6 +23,8 @@ const float FOV = toRadians(60.0);
 const float GRAVITY = -4;
 const float MASS = 1;
 const float RESTITUTION = 0.2;
+const float STATIC_FRICTION = 1;
+const float KINETIC_FRICTION = 1;
     
 } // END NAMESPACE ANONYMOUS
 } // END NAMESPACE ZILLION

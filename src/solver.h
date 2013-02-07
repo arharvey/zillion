@@ -10,6 +10,8 @@ namespace Zillion {
 namespace {
     const unsigned MAX_OCCUPANCY = 2; // Particles per cell
     const unsigned MAX_WORK_IDS = 9*MAX_OCCUPANCY;
+    
+    const float CUDA_FLOAT_MAX = 1e16;
 } // END ANONYMOUS NAMESPACE
     
 
@@ -18,18 +20,6 @@ namespace {
 void
 accumulateForces(float3* Fd, unsigned N, float m, float g,
                  const cudaDeviceProp& prop);
-
-void
-forwardEulerSolve(float3* Pd, float3* Vd,
-                  const float3* prevPd, const float3* Fd, unsigned N,
-                  float m, float dt,
-                  const cudaDeviceProp& prop);
-
-void
-handlePlaneCollisions(float3* Pd, float3* Vd, const float3* P0d,
-                            unsigned N, float r, float dt, float Cr,
-                            const cudaDeviceProp& prop);
-
 
 void
 populateCollisionGrid(int* d_G, int* d_GN, const float3* const d_P,
@@ -42,6 +32,19 @@ resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
                  const float3* const d_P, const int N, 
                  const float3 origin, const int3 dims, const float r,
                  const cudaDeviceProp& prop);
+
+
+void
+handlePlaneCollisions(float3* Pd, float3* Vd, unsigned N, float r, float dt,
+                      float restitution, float dynamicFriction,
+                      const cudaDeviceProp& prop);
+
+
+void
+forwardEulerSolve(float3* Pd, float3* Vd,
+                  const float3* prevPd, const float3* Fd, unsigned N,
+                  float m, float dt,
+                  const cudaDeviceProp& prop);
 
     
 unsigned

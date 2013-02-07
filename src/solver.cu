@@ -92,109 +92,6 @@ accumulateForces(float3* Fd, unsigned N, float m, float g, const cudaDeviceProp&
 
 // ---------------------------------------------------------------------------
 
-__global__
-void
-forwardEulerSolveKernel(float3* Pd, float3* Vd,
-                        const float3* P0d, const float3* Fd,
-                        unsigned N,
-                        float m, float dt)
-{
-    unsigned n = blockIdx.x*blockDim.x + threadIdx.x;
-    while(n < N)
-    {
-        const float3& F = Fd[n];
-        float3& V = Vd[n];
-        
-        // a = F/m
-        
-        const float _1_m = 1.0f/m;
-        
-        V += F * (_1_m * dt);
-        
-        const float3& P0 = P0d[n];
-        float3& P = Pd[n];
-
-        P = P0 + V*dt;
-        
-        n += blockDim.x * gridDim.x;
-    }
-}
-
-__host__
-void
-forwardEulerSolve(float3* Pd, float3* Vd,
-                  const float3* prevPd, const float3* Fd,
-                  unsigned N, float m, float dt, const cudaDeviceProp& prop)
-{
-    int nBlocks, nThreads;
-    calcDims(nBlocks, nThreads, N, prop);
-    
-    forwardEulerSolveKernel<<<nBlocks, nThreads>>>(Pd, Vd, prevPd, Fd, N,
-                                                   m, dt);
-    cudaCheckLastError();
-}
-
-
-// ---------------------------------------------------------------------------
-
-
-__global__
-void
-handlePlaneCollisionsKernel(float3* Pd, float3* Vd, const float3* P0d,
-                            unsigned N, float r, float dt, float Cr)
-{
-    unsigned n = blockIdx.x*blockDim.x + threadIdx.x;
-    while(n < N)
-    {
-        float3& V = Vd[n];
-        float3& P = Pd[n];
-        
-        const float3 plane = make_float3(0.0f, 1.0f, 0.0f);
-        const float d = 0.0f;
-        
-        const float distanceFromPlane = (plane ^ P) - d - r;
-        
-        // Have we collided with the plane?
-        if(distanceFromPlane <= 1e-6f)
-        {
-            const float perpSpeed = (V ^ plane);
-            
-            // Components of velocity perpendicular and tangent to plane
-            const float3 Vp = perpSpeed * plane;
-            const float3 Vt = V-Vp;
-            
-            // Bounce or contact?
-            V = Vt;
-            if(perpSpeed < -0.1f)
-                V -= Vp*Cr;
-            else
-                V *= (1.0f - 0.5f*dt);
-            
-            P.y = r;
-        }
-        
-        n += blockDim.x * gridDim.x;
-    }
-    
-}
-
-
-__host__
-void
-handlePlaneCollisions(float3* Pd, float3* Vd, const float3* P0d,
-                      unsigned N, float r, float dt, float Cr,
-                      const cudaDeviceProp& prop)
-{
-    int nBlocks, nThreads;
-    calcDims(nBlocks, nThreads, N, prop);
-    
-    handlePlaneCollisionsKernel<<<nBlocks, nThreads>>>(Pd, Vd, P0d, N, r, dt, Cr);
-    cudaCheckLastError();
-}
-
-
-// ---------------------------------------------------------------------------
-
 inline
 __device__
 int
@@ -352,6 +249,112 @@ resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
     
     resolveCollisionsKernel<<<nBlocks, nThreads, nShared>>>
             (d_F, d_G, d_GN, d_P, N, origin, dims, r);
+    cudaCheckLastError();
+}
+
+
+// ---------------------------------------------------------------------------
+
+__global__
+void
+handlePlaneCollisionsKernel(float3* Pd, float3* Vd,
+                            unsigned N, float r, float dt,
+                            float restitution, float kineticFriction)
+{
+    unsigned n = blockIdx.x*blockDim.x + threadIdx.x;
+    while(n < N)
+    {
+        float3& V = Vd[n];
+        float3& P = Pd[n];
+        
+        const float3 plane = make_float3(0.0f, 1.0f, 0.0f);
+        const float d = 0.0f;
+        
+        const float distanceFromPlane = (plane ^ P) - d - r;
+        
+        // Have we collided with the plane?
+        if(distanceFromPlane <= 1e-6f)
+        {
+            const float perpSpeed = (V ^ plane);
+            
+            // Components of velocity perpendicular and tangent to plane
+            const float3 Vp = perpSpeed * plane;
+            const float3 Vt = V-Vp;
+            
+            // Bounce or contact?
+            V = Vt;
+            if(perpSpeed < -0.1f) // Elastic collision
+                V -= Vp*restitution;
+            else                  // Contact collision
+                V *= (1.0f - kineticFriction*dt);
+            
+            P.y = r;
+        }
+        
+        n += blockDim.x * gridDim.x;
+    }
+    
+}
+
+
+__host__
+void
+handlePlaneCollisions(float3* Pd, float3* Vd,
+                      unsigned N, float r, float dt,
+                      float restitution, float kineticFriction,
+                      const cudaDeviceProp& prop)
+{
+    int nBlocks, nThreads;
+    calcDims(nBlocks, nThreads, N, prop);
+    
+    handlePlaneCollisionsKernel<<<nBlocks, nThreads>>>(Pd, Vd, N, r, dt,
+                                                       restitution,
+                                                       kineticFriction);
+    cudaCheckLastError();
+}
+
+
+// ---------------------------------------------------------------------------
+
+__global__
+void
+forwardEulerSolveKernel(float3* Pd, float3* Vd,
+                        const float3* P0d, const float3* Fd,
+                        unsigned N,
+                        float m, float dt)
+{
+    unsigned n = blockIdx.x*blockDim.x + threadIdx.x;
+    while(n < N)
+    {
+        const float3& F = Fd[n];
+        float3& V = Vd[n];
+        
+        // a = F/m
+        
+        const float _1_m = 1.0f/m;
+        
+        V += F * (_1_m * dt);
+        
+        const float3& P0 = P0d[n];
+        float3& P = Pd[n];
+
+        P = P0 + V*dt;
+        
+        n += blockDim.x * gridDim.x;
+    }
+}
+
+__host__
+void
+forwardEulerSolve(float3* Pd, float3* Vd,
+                  const float3* prevPd, const float3* Fd,
+                  unsigned N, float m, float dt, const cudaDeviceProp& prop)
+{
+    int nBlocks, nThreads;
+    calcDims(nBlocks, nThreads, N, prop);
+    
+    forwardEulerSolveKernel<<<nBlocks, nThreads>>>(Pd, Vd, prevPd, Fd, N,
+                                                   m, dt);
     cudaCheckLastError();
 }
 
@@ -546,9 +549,9 @@ struct MinReductionOp
 };
 
 
-float3 MinReductionOp::padding = {std::numeric_limits<float>::max(),
-                                  std::numeric_limits<float>::max(),
-                                  std::numeric_limits<float>::max()};
+float3 MinReductionOp::padding = {CUDA_FLOAT_MAX,
+                                  CUDA_FLOAT_MAX,
+                                  CUDA_FLOAT_MAX};
 
 
 __host__
@@ -591,9 +594,9 @@ struct MaxReductionOp
 };
 
 
-float3 MaxReductionOp::padding = {-std::numeric_limits<float>::max(),
-                                  -std::numeric_limits<float>::max(),
-                                  -std::numeric_limits<float>::max()};
+float3 MaxReductionOp::padding = {-CUDA_FLOAT_MAX,
+                                  -CUDA_FLOAT_MAX,
+                                  -CUDA_FLOAT_MAX};
 
 
 __host__

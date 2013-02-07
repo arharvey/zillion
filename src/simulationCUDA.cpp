@@ -148,8 +148,8 @@ SimulationCUDA::stepForward(double dt)
     forwardEulerSolve(P(), m_Vd, prevP(), m_Fd, m_nParticles, MASS, dt,
                       m_cudaProp);
     
-    handlePlaneCollisions(P(), m_Vd, prevP(), m_nParticles, m_particleRadius,
-                          dt, RESTITUTION, m_cudaProp);
+    handlePlaneCollisions(P(), m_Vd, m_nParticles, m_particleRadius,
+                          dt, RESTITUTION, KINETIC_FRICTION, m_cudaProp);
     
     P().unmap();
     prevP().unmap();
