@@ -8,9 +8,9 @@ namespace Zillion {
 // ---------------------------------------------------------------------------
 
 namespace {
-    const float REPULSION = 300;
-    const float DAMPING = .4;
-    const float SHEAR = 4;
+    const float REPULSION = 400;
+    const float DAMPING = 4;
+    const float SHEAR = 3;
     
     const unsigned MAX_OCCUPANCY = 2; // Particles per cell
     const unsigned MAX_WORK_IDS = 9*MAX_OCCUPANCY;
@@ -34,7 +34,8 @@ populateCollisionGrid(int* d_G, int* d_GN, const float3* const d_P,
 void
 resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
                  const float3* const d_P, const float3* const d_V, const int N, 
-                 const float3 origin, const int3 dims, const float r,
+                 const float3 origin, const int3 dims, const float cellSize,
+                 const float r,
                  const cudaDeviceProp& prop);
 
 

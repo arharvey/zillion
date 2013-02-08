@@ -172,7 +172,8 @@ __global__
 void
 resolveCollisionsKernel(float3* d_F, const int* const d_G, const int* const d_GN,
                  const float3* const d_P, const float3* const d_V, const int N, 
-                 const float3 origin, const int3 dims, const float r)
+                 const float3 origin, const int3 dims, const float cellSize,
+                 const float r)
 {
     extern __shared__ int ids[];
     
@@ -188,7 +189,7 @@ resolveCollisionsKernel(float3* d_F, const int* const d_G, const int* const d_GN
         
         const float3 P = d_P[n];
         const float3 V = d_V[n];
-        const int central = cellIndex(P, origin, dims, r);
+        const int central = cellIndex(P, origin, dims, cellSize);
         
         // We gather all the collisions in horizontal groups (X & Z dimensions),
         // as the particles are more likely to be distributed horizontally than
@@ -254,7 +255,8 @@ __host__
 void
 resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
                  const float3* const d_P, const float3* const d_V, const int N, 
-                 const float3 origin, const int3 dims, const float r,
+                 const float3 origin, const int3 dims, const float cellSize,
+                 const float r,
                  const cudaDeviceProp& prop)
 {
     int nBlocks, nThreads, nShared;
@@ -274,7 +276,7 @@ resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
     //std::cout << nBlocks << " " << nThreads << " " << nShared << std::endl;
     
     resolveCollisionsKernel<<<nBlocks, nThreads, nShared>>>
-            (d_F, d_G, d_GN, d_P, d_V, N, origin, dims, r);
+            (d_F, d_G, d_GN, d_P, d_V, N, origin, dims, cellSize, r);
     cudaCheckLastError();
 }
 
@@ -293,21 +295,25 @@ handlePlaneCollisionsKernel(float3* Pd, float3* Vd, float3* Fd,
         float3 P = Pd[n];
         
         const float d = 0.0f;
-        const float distanceFromPlane = (plane ^ P) - d - r;
+        float distanceFromPlane = (plane ^ P) - d;
         
         // Have we collided with the plane?
-        if(distanceFromPlane < 1e-4)
+        if(distanceFromPlane < r)
         {
+            distanceFromPlane = -distanceFromPlane; // Distance must be positive
+            
             float3 V = Vd[n];
+            /*
             const float perpSpeed = (V ^ plane);
+             *
             
             // Components of velocity perpendicular and tangent to plane
             const float3 Vp = perpSpeed * plane;
             const float3 Vt = V-Vp;
             V = Vt;
-            
+            */
             float3 F = Fd[n];
-            
+            /*
             const float perpForce = (F ^ plane);
             const float3 Fp = perpForce * plane;
             F -= Fp; // Equal and opposite reaction
@@ -322,12 +328,13 @@ handlePlaneCollisionsKernel(float3* Pd, float3* Vd, float3* Fd,
                     if(perpForce < 0.0f)
                         F -= (-perpForce * kineticFriction) * normalized(V);
                 }
-            }
+            }*/
             
-            F += REPULSION*(r - distanceFromPlane) * plane;
+            //F += (REPULSION*(-distanceFromPlane)) * plane;
+            addCollisionReaction(F, plane, distanceFromPlane, r, V);
             
             Fd[n] = F;
-            Vd[n] = V;
+            //Vd[n] = V;
         }
         
         n += blockDim.x * gridDim.x;

@@ -135,6 +135,21 @@ operator-(const float3& a, const float3& b)
 inline
 __host__
 __device__
+float3
+operator-(const float3& a)
+{
+    float3 v;
+    v.x = -a.x;
+    v.y = -a.y;
+    v.z = -a.z;
+    
+    return v;
+}
+
+
+inline
+__host__
+__device__
 float
 operator^(const float3& a, const float3& b)
 {
