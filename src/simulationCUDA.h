@@ -3,7 +3,7 @@
 
 #include "sharedBuffer.h"
 
-#define SANITY_CHECK_COLLISION_GRID 1
+#define SANITY_CHECK_COLLISION_GRID 0
 
 
 namespace Zillion {
@@ -45,8 +45,11 @@ protected:
     const float m_particleRadius;
     
 #ifdef SANITY_CHECK_COLLISION_GRID
-    void sanityCheckCollisionGrid(int nCells);
+    void sanityCheckCollisionGrid(int nCells, const int3& collDims);
+    void dumpCollisionGrid();
     
+    int m_nCells;
+    int3 m_collDims;
     int* m_GNh;
     int* m_Gh;
 #endif

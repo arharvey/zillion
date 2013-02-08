@@ -32,12 +32,14 @@ int g_cudaDevice = 0;
 
 
 void
-initPositions(float3* pPts, float nDim, GLfloat size, const Imath::V3f offset,
-              const float jitter)
+initPositions(float3* pPts, float nDim, GLfloat size, int nMaxParticles,
+              const Imath::V3f offset, const float jitter)
 {
-    srand(17);
+    srand(19);
     
     const float _DIM = 1.0/float(nDim);
+    
+    int nParticles = 0;
     
     float3* pt = pPts;
     for(unsigned k = 0; k < nDim; k++)
@@ -49,8 +51,12 @@ initPositions(float3* pPts, float nDim, GLfloat size, const Imath::V3f offset,
                 pt->x = (((float(i)+.5+frand()*jitter)*_DIM) - 0.5) * size + offset.x;
                 pt->y = (((float(j)+.5+frand()*jitter)*_DIM) - 0.5) * size + offset.y;
                 pt->z = (((float(k)+.5+frand()*jitter)*_DIM) - 0.5) * size + offset.z;
-
+                
                 pt++;
+                nParticles++;
+                
+                if(nMaxParticles > 0 && nParticles > nMaxParticles)
+                    return;
             }
         }
     }
@@ -58,28 +64,22 @@ initPositions(float3* pPts, float nDim, GLfloat size, const Imath::V3f offset,
 
 
 void
-initColors(float3* pColor, float nDim, const Imath::V3f& tint, float mix)
+initColors(float3* pColor, int nParticles, const Imath::V3f& tint, float mix)
 {
     srand(31);
     
     float3* C = pColor;
-    for(unsigned k = 0; k < nDim; k++)
+    for(int n = 0; n < nParticles; n++)
     {
-        for(unsigned j = 0; j < nDim; j++)
-        {
-            for(unsigned i = 0; i < nDim; i++)
-            {
-                Imath::V3f CC(frand(), frand(), frand());
-                CC *= 1.0f / std::max(CC.x, std::max(CC.y, CC.z));
-                CC = mix*CC + (1.0f-mix)*tint;
+        Imath::V3f CC(frand(), frand(), frand());
+        CC *= 1.0f / std::max(CC.x, std::max(CC.y, CC.z));
+        CC = mix*CC + (1.0f-mix)*tint;
 
-                C->x = CC.x;
-                C->y = CC.y;
-                C->z = CC.z;
-                
-                C++;
-            }
-        }
+        C->x = CC.x;
+        C->y = CC.y;
+        C->z = CC.z;
+
+        C++;
     }
 }
 
@@ -493,7 +493,7 @@ run()
                                      PARTICLE_SIZE_RELATIVE_TO_GRID_CELL;
         
         // Create VBO for sphere
-        PlanePrimitive ground( Imath::Plane3f(Imath::V3f(0.0, 1.0, 0.0), 0.0));
+        PlanePrimitive ground( Imath::Plane3f(Imath::V3f(0.0, 2.0, 0.0), 0.0));
         SpherePrimitive dome(FAR, 100, 50);
         SpherePrimitive sphere(1.0, 12, 6);
        
@@ -503,10 +503,14 @@ run()
         std::cout << "Instancing " << nParticles << " objects" << std::endl;
          
         float3* Pinit = new float3[nParticles];
-        initPositions(Pinit, nDimNum, GRID_SIZE, Imath::V3f(0.0, 0.75, 0.0), 1.0);
-                
+        
+        const Imath::V3f offset(0.0, 1.25, 0.0);
+        const float jitter = 0.5*(1.0-PARTICLE_SIZE_RELATIVE_TO_GRID_CELL);
+        
+        initPositions(Pinit, nDimNum, GRID_SIZE, 0, offset, jitter);
+               
         float3* Vinit = new float3[nParticles];
-        initVelocities(Vinit, Pinit, nParticles, 0.0, Imath::V3f(0.0, 0.0, 0.0));
+        initVelocities(Vinit, Pinit, nParticles, 0.0, Imath::V3f(0.0, 0.25, 0.0));
         
         SimulationCUDA sim(g_cudaDevice, Pinit, Vinit, nParticles, particleRadius);
         
@@ -523,7 +527,7 @@ run()
         glGenBuffers(1, &colorBuffer);
     
         float3* Cinit = new float3[nParticles];
-        initColors(Cinit, nDimNum, Imath::V3f(0.9, 0.9, 1.0), 0.5);
+        initColors(Cinit, nParticles, Imath::V3f(0.9, 0.9, 1.0), 0.5);
         
         glBindBuffer(GL_ARRAY_BUFFER, colorBuffer);
         glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat)*nParticles*3,
@@ -563,7 +567,7 @@ run()
         camera.setAzimuth(toRadians(0));
         
         int windowWidth = WIDTH, windowHeight = HEIGHT;
-        while( glfwGetWindowParam(GLFW_OPENED) )
+        while( glfwGetWindowParam(GLFW_OPENED) && nFrameCount < 1e8)
         {
             int currentWindowWidth = 0, currentWindowHeight = 0;
             glfwGetWindowSize(&currentWindowWidth, &currentWindowHeight);
@@ -738,9 +742,8 @@ run()
             const double currentTime = glfwGetTime();
             const double dt = std::min(currentTime - prevTime, 1.0/60.0);
             
-            int iterations = 5;
-            for(int n = 0; n < iterations; n++)
-                sim.stepForward(dt/iterations);
+            for(int n = 0; n < ITERATIONS; n++)
+                sim.stepForward(dt/ITERATIONS);
               
             prevTime = currentTime;
             
@@ -749,6 +752,8 @@ run()
         
         if(nFrameCount > 0)
         {
+            std::cout << "Frames rendered: " << nFrameCount << std::endl;
+            
             double elapsed = glfwGetTime() - startTime;
             double fps = double(nFrameCount) / elapsed;
             

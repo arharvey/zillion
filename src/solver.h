@@ -8,11 +8,11 @@ namespace Zillion {
 // ---------------------------------------------------------------------------
 
 namespace {
-    const float REPULSION = 400;
+    const float REPULSION = 3000;
     const float DAMPING = 4;
-    const float SHEAR = 3;
+    const float SHEAR = 4;
     
-    const unsigned MAX_OCCUPANCY = 2; // Particles per cell
+    const unsigned MAX_OCCUPANCY = 8; // Particles per cell
     const unsigned MAX_WORK_IDS = 9*MAX_OCCUPANCY;
     
     const float CUDA_FLOAT_MAX = 1e16;
@@ -41,7 +41,7 @@ resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
 
 void
 handlePlaneCollisions(float3* Pd, float3* Vd, float3* Fd, unsigned N, float r,
-                      const float3& plane, float restitution, float dynamicFriction,
+                      const float4& plane, float restitution, float dynamicFriction,
                       const cudaDeviceProp& prop);
 
 

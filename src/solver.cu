@@ -149,11 +149,11 @@ populateCollisionGrid(int* d_G, int* d_GN, const float3* const d_P,
 inline
 __device__
 void
-addCollisionReaction(float3& F, const float3& Rij_dir, const float Rij_dist,
+addCollisionReaction(float3& F, const float3& Rij_dir,
                       const float d, const float3& Vij)
 {
     // Repulsive force
-    F += REPULSION*(d - Rij_dist) * Rij_dir;
+    F += REPULSION*d * Rij_dir;
     
     // Damping force
     const float3 Vijn = (Vij^Rij_dir)*Rij_dir;
@@ -239,7 +239,7 @@ resolveCollisionsKernel(float3* d_F, const int* const d_G, const int* const d_GN
                     Rij_dist *= Rij_distSq;
                     
                     const float3& Vij = V - d_V[otherParticle];
-                    addCollisionReaction(F, Rij_dir, Rij_dist, 2*r, Vij);
+                    addCollisionReaction(F, Rij_dir, 2*r-Rij_dist, Vij);
                 }
             }
         }
@@ -261,13 +261,13 @@ resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
 {
     int nBlocks, nThreads, nShared;
     
-    int nMaxThreadsPerBlock = prop.sharedMemPerBlock / (MAX_WORK_IDS * sizeof(int));
+    nThreads = prop.sharedMemPerBlock / (MAX_WORK_IDS * sizeof(int));
+    nThreads = std::min(nThreads, 128);
+    nThreads = std::max(prop.warpSize, std::min(N, nThreads));
     
     // Round down threads to nearest warp size and ensure it is within
     // sensible bounds
-    nMaxThreadsPerBlock &= ~(prop.warpSize-1);
-
-    nThreads = std::min(nMaxThreadsPerBlock, 128);
+    nThreads &= ~(prop.warpSize-1);
     assert(nThreads > 0);
     
     nBlocks = (N + nThreads-1) / nThreads;
@@ -286,55 +286,24 @@ resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
 __global__
 void
 handlePlaneCollisionsKernel(float3* Pd, float3* Vd, float3* Fd,
-                            unsigned N, float r, const float3 plane,
+                            unsigned N, float r, const float4 plane,
                             float restitution, float kineticFriction)
 {
+    const float3 planeDir = make_float3(plane.x, plane.y, plane.z);
+    
     unsigned n = blockIdx.x*blockDim.x + threadIdx.x;
     while(n < N)
     {
         float3 P = Pd[n];
         
-        const float d = 0.0f;
-        float distanceFromPlane = (plane ^ P) - d;
+        float distanceFromPlane = plane ^ P;
         
         // Have we collided with the plane?
         if(distanceFromPlane < r)
         {
-            distanceFromPlane = -distanceFromPlane; // Distance must be positive
-            
-            float3 V = Vd[n];
-            /*
-            const float perpSpeed = (V ^ plane);
-             *
-            
-            // Components of velocity perpendicular and tangent to plane
-            const float3 Vp = perpSpeed * plane;
-            const float3 Vt = V-Vp;
-            V = Vt;
-            */
             float3 F = Fd[n];
-            /*
-            const float perpForce = (F ^ plane);
-            const float3 Fp = perpForce * plane;
-            F -= Fp; // Equal and opposite reaction
-            
-            // Bounce or contact?
-            if(perpSpeed < -1e-1f) // Elastic collision
-                V -= Vp*restitution;
-            else                  // Contact collision
-            {
-                if((V^V) > 1e-8)
-                {
-                    if(perpForce < 0.0f)
-                        F -= (-perpForce * kineticFriction) * normalized(V);
-                }
-            }*/
-            
-            //F += (REPULSION*(-distanceFromPlane)) * plane;
-            addCollisionReaction(F, plane, distanceFromPlane, r, V);
-            
+            addCollisionReaction(F, planeDir, -(distanceFromPlane-r), Vd[n]);
             Fd[n] = F;
-            //Vd[n] = V;
         }
         
         n += blockDim.x * gridDim.x;
@@ -346,7 +315,7 @@ handlePlaneCollisionsKernel(float3* Pd, float3* Vd, float3* Fd,
 __host__
 void
 handlePlaneCollisions(float3* Pd, float3* Vd, float3* Fd,
-                      unsigned N, float r, const float3& plane,
+                      unsigned N, float r, const float4& plane,
                       float restitution, float kineticFriction,
                       const cudaDeviceProp& prop)
 {

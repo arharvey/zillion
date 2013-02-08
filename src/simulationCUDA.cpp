@@ -27,6 +27,10 @@ m_cudaDevice(cudaDevice),
 m_Fd(NULL), m_Vd(NULL),
 m_currentBuffer(0),
 m_nParticles(nParticles), m_particleRadius(particleRadius)
+
+#ifdef SANITY_CHECK_COLLISION_GRID
+, m_nCells(0), m_GNh(NULL), m_Gh(NULL)
+#endif
 {
     
     cudaGetDeviceProperties(&m_cudaProp, m_cudaDevice);
@@ -70,6 +74,13 @@ m_nParticles(nParticles), m_particleRadius(particleRadius)
 
 SimulationCUDA::~SimulationCUDA()
 {
+#if SANITY_CHECK_COLLISION_GRID
+    dumpCollisionGrid();
+    
+    delete [] m_GNh;
+    delete [] m_Gh;
+#endif
+    
     cudaFree(m_Gd);
     cudaFree(m_GNd);
     cudaFree(m_Vd);
@@ -101,10 +112,12 @@ SimulationCUDA::stepForward(double dt)
     cudaMemcpy(m_Wd, prevP(), m_nParticles*sizeof(float3), cudaMemcpyDeviceToDevice);
     maxFloat3(maxExtent, m_Wd, m_nParticles, m_cudaProp);
     
+    const float cellSize = 2.0f * m_particleRadius;
+    
     // Work out extents of particle system
-    const float3 gridPadding = make_float3(m_particleRadius,
-                                            m_particleRadius,
-                                            m_particleRadius) * 2;
+    const float3 gridPadding = make_float3(m_particleRadius + cellSize,
+                                            m_particleRadius + cellSize,
+                                            m_particleRadius + cellSize);
     
     minExtent -= gridPadding;
     maxExtent += gridPadding;
@@ -113,16 +126,16 @@ SimulationCUDA::stepForward(double dt)
     
     // Ensure we have enough space to store collision grid and reset it
     
-    const float cellSize = m_particleRadius;
-    
     int3 collDims;
     collDims.x = ceil(range.x / cellSize);
     collDims.y = ceil(range.y / cellSize);
     collDims.z = ceil(range.z / cellSize);
     
-    int nCells = collDims.x * collDims.y * collDims.z;
+    const int nCells = collDims.x * collDims.y * collDims.z;
     assert(nCells > 0);
-    assert(nCells < m_nMaxCells);
+    assert(nCells <= m_nMaxCells);
+    
+    //std::cout << collDims << std::endl;
     
     const float usage = float(nCells)/float(m_nMaxCells);
     if(usage >= 0.9)
@@ -139,34 +152,38 @@ SimulationCUDA::stepForward(double dt)
     
     // DEBUG: Sanity check grid
 #if SANITY_CHECK_COLLISION_GRID
-    sanityCheckCollisionGrid(nCells);
+    sanityCheckCollisionGrid(nCells, collDims);
 #endif
     
     resolveCollisions(m_Fd, m_Gd, m_GNd, prevP(), m_Vd, m_nParticles,
                       minExtent, collDims, cellSize, m_particleRadius, m_cudaProp);
     
-    const float3 groundPlane = make_float3(0.0, 1.0, 0.0);
+    const float4 groundPlane = make_float4(0.0, 1.0, 0.0, 0.0);
     handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
                           groundPlane,
                           RESTITUTION, KINETIC_FRICTION, m_cudaProp);
     
+    
+    
     const float _1_R2 = 1.0f/sqrtf(2.0);
-    float3 rampPlane = make_float3(-_1_R2, _1_R2, 0.0);
+    const float d = 0.1/_1_R2;
+    
+    float4 rampPlane = make_float4(-_1_R2, _1_R2, 0.0, -d);
     handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
                           rampPlane,
                           RESTITUTION, KINETIC_FRICTION, m_cudaProp);
     
-    rampPlane = make_float3(_1_R2, _1_R2, 0.0);
+    rampPlane = make_float4(_1_R2, _1_R2, 0.0, -d);
     handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
                           rampPlane,
                           RESTITUTION, KINETIC_FRICTION, m_cudaProp);
     
-    rampPlane = make_float3(0, _1_R2, _1_R2);
+    rampPlane = make_float4(0, _1_R2, _1_R2, -d);
     handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
                           rampPlane,
                           RESTITUTION, KINETIC_FRICTION, m_cudaProp);
     
-    rampPlane = make_float3(0, _1_R2, -_1_R2);
+    rampPlane = make_float4(0, _1_R2, -_1_R2, -d);
     handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
                           rampPlane,
                           RESTITUTION, KINETIC_FRICTION, m_cudaProp);
@@ -182,16 +199,19 @@ SimulationCUDA::stepForward(double dt)
 
 
 void
-SimulationCUDA::sanityCheckCollisionGrid(int nCells)
+SimulationCUDA::sanityCheckCollisionGrid(int nCells, const int3& collDims)
 {
+    m_nCells = nCells;
+    m_collDims = collDims;
+    
     cudaCheckError( cudaDeviceSynchronize() );
     
-    cudaMemcpy(m_GNh, m_GNd, nCells*sizeof(int), cudaMemcpyDeviceToHost);
-    cudaMemcpy(m_Gh, m_Gd, nCells*MAX_OCCUPANCY*sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(m_GNh, m_GNd, m_nCells*sizeof(int), cudaMemcpyDeviceToHost);
+    cudaMemcpy(m_Gh, m_Gd, m_nCells*MAX_OCCUPANCY*sizeof(int), cudaMemcpyDeviceToHost);
     
     int nAccountedParticles = 0;
     int nOverflowCells = 0, nOverflowParticles = 0;
-    for(int n = 0; n < nCells; n++)
+    for(int n = 0; n < m_nCells; n++)
     {
         const int nCount = m_GNh[n];
         if(nCount < 0)
@@ -246,6 +266,42 @@ SimulationCUDA::sanityCheckCollisionGrid(int nCells)
         exit(EXIT_FAILURE);
     }
 }
+
+
+void
+SimulationCUDA::dumpCollisionGrid()
+{
+    const int strideY = m_collDims.x;
+    const int strideZ = m_collDims.x*m_collDims.y;
+   
+    //std::cout << "Particle radius:" << m_particleRadius << std::endl;
+    
+    int n = 0;
+    for(int k = 0; k < m_collDims.z; k++)
+    {
+        for(int j = 0; j < m_collDims.y; j++)
+        {
+            for(int i = 0; i < m_collDims.x; i++, n++)
+            {
+                int count = m_GNh[n];
+                if(count > 0)
+                {
+                    std::cout << "[" << i << ", " << j << ", " << k << "]: ("
+                            << count << ") ";
+                    
+                    count = std::min(count, int(MAX_OCCUPANCY));
+                    const int* ids = m_Gh + n*MAX_OCCUPANCY;
+                    for(int c = 0; c < count; c++)
+                        std::cout << ids[c] << " ";
+                    
+                    std::cout << std::endl;
+                    
+                }
+            }
+        }
+    }
+}
+
 
 // --------------------------------------------------------------------------- 
     
