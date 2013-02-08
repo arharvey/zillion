@@ -142,7 +142,7 @@ SimulationCUDA::stepForward(double dt)
     sanityCheckCollisionGrid(nCells);
 #endif
     
-    resolveCollisions(m_Fd, m_Gd, m_GNd, prevP(), m_nParticles,
+    resolveCollisions(m_Fd, m_Gd, m_GNd, prevP(), m_Vd, m_nParticles,
                       minExtent, collDims, m_particleRadius, m_cudaProp);
     
     const float3 groundPlane = make_float3(0.0, 1.0, 0.0);

@@ -144,6 +144,28 @@ populateCollisionGrid(int* d_G, int* d_GN, const float3* const d_P,
     cudaCheckLastError();
 }
 
+// ---------------------------------------------------------------------------
+
+inline
+__device__
+void
+addCollisionReaction(float3& F, const float3& Rij_dir, const float Rij_dist,
+                      const float d, const float3& Vij)
+{
+    // Repulsive force
+    const float3 Fis = REPULSION*(d - Rij_dist) * Rij_dir;
+    F += Fis;
+    
+    // Damping force
+    const float3 Fid = -DAMPING*Vij;
+    F += Fid;
+    
+    // Shear force
+    const float3 Fit = -SHEAR*(Vij - (Vij^Rij_dir)*Rij_dir);
+    F += Fit;
+}
+
+
 
 // ---------------------------------------------------------------------------
 
@@ -151,7 +173,7 @@ populateCollisionGrid(int* d_G, int* d_GN, const float3* const d_P,
 __global__
 void
 resolveCollisionsKernel(float3* d_F, const int* const d_G, const int* const d_GN,
-                 const float3* const d_P, const int N, 
+                 const float3* const d_P, const float3* const d_V, const int N, 
                  const float3 origin, const int3 dims, const float r)
 {
     extern __shared__ int ids[];
@@ -167,6 +189,7 @@ resolveCollisionsKernel(float3* d_F, const int* const d_G, const int* const d_GN
         float3 F = make_float3(0, 0, 0);
         
         const float3 P = d_P[n];
+        const float3 V = d_V[n];
         const int central = cellIndex(P, origin, dims, r);
         
         // We gather all the collisions in horizontal groups (X & Z dimensions),
@@ -206,16 +229,18 @@ resolveCollisionsKernel(float3* d_F, const int* const d_G, const int* const d_GN
             for(int c = 0; c < collisions; ++c)
             {
                 const int otherParticle = ids[blockDim.x*c + threadIdx.x];
-                const float3 otherP = d_P[otherParticle];
-
-                float3 d = P - otherP;
-                const float distSq = d^d;
-                if(distSq < minDistSq)
+                
+                const float3 Rij = P - d_P[otherParticle];
+                const float Rij_distSq = Rij^Rij;
+                if(Rij_distSq < minDistSq)
                 {
                     // We have a collision! Push particles away from each other
-                    d *= rsqrtf(distSq);
-
-                    F += 5.0f * d;
+                    float Rij_dist = rsqrtf(Rij_distSq);
+                    const float3 Rij_dir = Rij * Rij_dist;
+                    Rij_dist *= Rij_distSq;
+                    
+                    const float3& Vij = V - d_V[otherParticle];
+                    addCollisionReaction(F, Rij_dir, Rij_dist, 2*r, Vij);
                 }
             }
         }
@@ -230,7 +255,7 @@ resolveCollisionsKernel(float3* d_F, const int* const d_G, const int* const d_GN
 __host__
 void
 resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
-                 const float3* const d_P, const int N, 
+                 const float3* const d_P, const float3* const d_V, const int N, 
                  const float3 origin, const int3 dims, const float r,
                  const cudaDeviceProp& prop)
 {
@@ -251,7 +276,7 @@ resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
     //std::cout << nBlocks << " " << nThreads << " " << nShared << std::endl;
     
     resolveCollisionsKernel<<<nBlocks, nThreads, nShared>>>
-            (d_F, d_G, d_GN, d_P, N, origin, dims, r);
+            (d_F, d_G, d_GN, d_P, d_V, N, origin, dims, r);
     cudaCheckLastError();
 }
 
@@ -301,7 +326,7 @@ handlePlaneCollisionsKernel(float3* Pd, float3* Vd, float3* Fd,
                 }
             }
             
-            F += plane * 1.0f;
+            F += plane; //addCollisionReaction(F, plane, distanceFromPlane, r, V);
             
             Fd[n] = F;
             Vd[n] = V;
