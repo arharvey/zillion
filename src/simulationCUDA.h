@@ -3,7 +3,7 @@
 
 #include "sharedBuffer.h"
 
-#define SANITY_CHECK_COLLISION_GRID 1
+#define SANITY_CHECK_COLLISION_GRID 0
 
 
 namespace Zillion {

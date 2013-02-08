@@ -8,9 +8,9 @@ namespace Zillion {
 // ---------------------------------------------------------------------------
 
 namespace {
-    const float REPULSION = 170;
-    const float DAMPING = .1;
-    const float SHEAR = 0;
+    const float REPULSION = 300;
+    const float DAMPING = .4;
+    const float SHEAR = 4;
     
     const unsigned MAX_OCCUPANCY = 2; // Particles per cell
     const unsigned MAX_WORK_IDS = 9*MAX_OCCUPANCY;

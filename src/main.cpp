@@ -737,7 +737,11 @@ run()
             // Step the simulation forward
             const double currentTime = glfwGetTime();
             const double dt = std::min(currentTime - prevTime, 1.0/60.0);
-            sim.stepForward(dt);
+            
+            int iterations = 5;
+            for(int n = 0; n < iterations; n++)
+                sim.stepForward(dt/iterations);
+              
             prevTime = currentTime;
             
             nFrameCount++;

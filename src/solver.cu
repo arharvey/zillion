@@ -153,16 +153,14 @@ addCollisionReaction(float3& F, const float3& Rij_dir, const float Rij_dist,
                       const float d, const float3& Vij)
 {
     // Repulsive force
-    const float3 Fis = REPULSION*(d - Rij_dist) * Rij_dir;
-    F += Fis;
+    F += REPULSION*(d - Rij_dist) * Rij_dir;
     
     // Damping force
-    const float3 Fid = -DAMPING*Vij;
-    F += Fid;
+    const float3 Vijn = (Vij^Rij_dir)*Rij_dir;
+    F += -DAMPING * Vijn;
     
     // Shear force
-    const float3 Fit = -SHEAR*(Vij - (Vij^Rij_dir)*Rij_dir);
-    F += Fit;
+    F += -SHEAR*(Vij - Vijn);
 }
 
 
@@ -326,7 +324,7 @@ handlePlaneCollisionsKernel(float3* Pd, float3* Vd, float3* Fd,
                 }
             }
             
-            F += plane; //addCollisionReaction(F, plane, distanceFromPlane, r, V);
+            F += REPULSION*(r - distanceFromPlane) * plane;
             
             Fd[n] = F;
             Vd[n] = V;
