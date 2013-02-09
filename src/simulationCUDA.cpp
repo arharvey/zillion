@@ -26,33 +26,13 @@ SimulationCUDA::SimulationCUDA(int cudaDevice,
 m_cudaDevice(cudaDevice),
 m_Fd(NULL), m_Vd(NULL),
 m_currentBuffer(0),
-m_nParticles(nParticles), m_particleRadius(particleRadius)
+m_nParticles(0), m_particleRadius(particleRadius)
 
 #ifdef SANITY_CHECK_COLLISION_GRID
 , m_nCells(0), m_GNh(NULL), m_Gh(NULL)
 #endif
 {
-    
     cudaGetDeviceProperties(&m_cudaProp, m_cudaDevice);
-    
-    for(unsigned n = 0; n < 2; n++)
-    {
-        m_P[n] = new SharedBuffer<float3>(GL_ARRAY_BUFFER, nParticles,
-                                          GL_DYNAMIC_DRAW);
-    }
-    
-    P().map();
-    cudaMemcpy(P(), Pinit, nParticles*sizeof(float3), cudaMemcpyHostToDevice);
-    P().unmap();
-
-    cudaCheckError( cudaMalloc( &m_Fd, nParticles*sizeof(float3) ) );
-    cudaMemset( m_Fd, 0, nParticles*sizeof(float3) );
-    
-    cudaCheckError( cudaMalloc( &m_Vd, nParticles*sizeof(float3) ) );
-    cudaMemcpy(m_Vd, Vinit, nParticles*sizeof(float3), cudaMemcpyHostToDevice);
-    
-    int workSize = reduceWorkSize(nParticles, m_cudaProp) * sizeof(float3);
-    cudaCheckError( cudaMalloc( &m_Wd, workSize) );
     
     // Reserve space for our collision grid
     
@@ -61,41 +41,114 @@ m_nParticles(nParticles), m_particleRadius(particleRadius)
     
     cudaCheckError( cudaMalloc( &m_GNd, m_nMaxCells*sizeof(int) ) );
     cudaCheckError( cudaMalloc( &m_Gd, m_nMaxCells*MAX_OCCUPANCY*sizeof(int) ) );
+            
+    std::cout << "Reserved " << m_nMaxCells << " grid cells ("
+              << COLLISION_GRID_MAX_SIZE << "MB) for collision detection" << std::endl;
     
 #ifdef SANITY_CHECK_COLLISION_GRID
     m_GNh = new int[m_nMaxCells];
     m_Gh = new int[m_nMaxCells*MAX_OCCUPANCY];
 #endif
-            
-    std::cout << "Reserved " << m_nMaxCells << " grid cells ("
-              << COLLISION_GRID_MAX_SIZE << "MB) for collision detection" << std::endl;
+    
+    for(unsigned n = 0; n < 2; n++)
+        m_P[n] = NULL;
+    
+    resetParticles(Pinit, Vinit, nParticles);
 }
 
 
 SimulationCUDA::~SimulationCUDA()
 {
+    cleanupParticles();
+    
 #if SANITY_CHECK_COLLISION_GRID
     dumpCollisionGrid();
     
     delete [] m_GNh;
     delete [] m_Gh;
 #endif
-    
-    cudaFree(m_Gd);
-    cudaFree(m_GNd);
-    cudaFree(m_Vd);
-    cudaFree(m_Fd);
-    
-    for(unsigned n = 0; n < 2; n++)
-        delete m_P[n];
 }
 
 
 // --------------------------------------------------------------------------- 
 
+
+void
+SimulationCUDA::allocateParticles(unsigned nParticles)
+{    
+    assert(m_nParticles == 0);
+    m_nParticles = nParticles;
+    
+    for(unsigned n = 0; n < 2; n++)
+    {
+        m_P[n] = new SharedBuffer<float3>(GL_ARRAY_BUFFER, nParticles,
+                                          GL_DYNAMIC_DRAW);
+    }
+
+    cudaCheckError( cudaMalloc( &m_Fd, nParticles*sizeof(float3) ) );
+    cudaCheckError( cudaMalloc( &m_Vd, nParticles*sizeof(float3) ) );
+    
+    int workSize = reduceWorkSize(nParticles, m_cudaProp) * sizeof(float3);
+    cudaCheckError( cudaMalloc( &m_Wd, workSize) );
+}
+
+
+void
+SimulationCUDA::cleanupParticles()
+{
+    if(m_nParticles == 0)
+        return;
+    
+    cudaFree(m_Vd);
+    cudaFree(m_Fd);
+    cudaFree(m_Wd);
+    
+    m_Vd = NULL;
+    m_Fd = NULL;
+    m_Wd = NULL;
+    
+    for(unsigned n = 0; n < 2; n++)
+    {
+        delete m_P[n];
+        m_P[n] = NULL;
+    }
+    
+    m_nParticles = 0;
+}
+
+
+void
+SimulationCUDA::resetParticles(const float3* Pinit, const float3* Vinit,
+                               unsigned nParticles)
+{
+    if(m_nParticles != nParticles)
+    {
+        cleanupParticles();
+        allocateParticles(nParticles);
+    }
+    
+    m_currentBuffer = 0;
+    
+    P().map();
+    cudaMemcpy(P(), Pinit, nParticles*sizeof(float3), cudaMemcpyHostToDevice);
+    P().unmap();
+    
+    cudaCheckError( cudaMemset(m_Fd, 0, nParticles*sizeof(float3)) );
+    cudaCheckError( cudaMemcpy(m_Vd, Vinit, nParticles*sizeof(float3),
+                               cudaMemcpyHostToDevice) );
+    
+#if SANITY_CHECK_COLLISION_GRID
+    m_nCells = 0;
+#endif
+}
+
+
 void
 SimulationCUDA::stepForward(double dt)
 {
+    if(m_nParticles == 0)
+        return;
+    
     swapBuffers();
     
     prevP().map();
@@ -168,25 +221,21 @@ SimulationCUDA::stepForward(double dt)
     const float _1_R2 = 1.0f/sqrtf(2.0);
     const float d = 0.1/_1_R2;
     
-    float4 rampPlane = make_float4(-_1_R2, _1_R2, 0.0, -d);
+    float4 rampPlane = make_float4(-_1_R2, _1_R2, 0.0, -d+1);
     handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
-                          rampPlane,
-                          RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+                          rampPlane, RESTITUTION, KINETIC_FRICTION, m_cudaProp);
     
-    rampPlane = make_float4(_1_R2, _1_R2, 0.0, -d);
+    rampPlane = make_float4(_1_R2, _1_R2, 0.0, -d+1);
     handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
-                          rampPlane,
-                          RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+                          rampPlane, RESTITUTION, KINETIC_FRICTION, m_cudaProp);
     
-    rampPlane = make_float4(0, _1_R2, _1_R2, -d);
+    rampPlane = make_float4(0, _1_R2, _1_R2, -d+0.5);
     handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
-                          rampPlane,
-                          RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+                          rampPlane, RESTITUTION, KINETIC_FRICTION, m_cudaProp);
     
-    rampPlane = make_float4(0, _1_R2, -_1_R2, -d);
+    rampPlane = make_float4(0, _1_R2, -_1_R2, -d+0.5);
     handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
-                          rampPlane,
-                          RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+                          rampPlane, RESTITUTION, KINETIC_FRICTION, m_cudaProp);
     
     forwardEulerSolve(P(), m_Vd, prevP(), m_Fd, m_nParticles, MASS, dt,
                       m_cudaProp);

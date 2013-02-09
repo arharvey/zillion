@@ -17,11 +17,16 @@ public:
                    unsigned nParticles, float particleRadius);
     virtual ~SimulationCUDA();
     
+    void resetParticles(const float3* Pinit, const float3* Vinit,
+                        unsigned nParticles);
     virtual void stepForward(double dt);
     
     SharedBuffer<float3>& P() const {return *m_P[m_currentBuffer];}
     
 protected:
+    void allocateParticles(unsigned nParticles);
+    void cleanupParticles();
+    
     SharedBuffer<float3>& prevP() const {return *m_P[1-m_currentBuffer];}
     void swapBuffers() {m_currentBuffer = 1-m_currentBuffer;}
     

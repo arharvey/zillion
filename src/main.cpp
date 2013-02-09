@@ -504,18 +504,15 @@ run()
          
         float3* Pinit = new float3[nParticles];
         
-        const Imath::V3f offset(0.0, 1.25, 0.0);
+        const Imath::V3f offset(-1.5, 1.25, -0.5);
         const float jitter = 0.5*(1.0-PARTICLE_SIZE_RELATIVE_TO_GRID_CELL);
         
         initPositions(Pinit, nDimNum, GRID_SIZE, 0, offset, jitter);
                
         float3* Vinit = new float3[nParticles];
-        initVelocities(Vinit, Pinit, nParticles, 0.0, Imath::V3f(0.0, 0.25, 0.0));
+        initVelocities(Vinit, Pinit, nParticles, 0, Imath::V3f(0.0, 0.25, 0.0));
         
         SimulationCUDA sim(g_cudaDevice, Pinit, Vinit, nParticles, particleRadius);
-        
-        delete [] Pinit;
-        delete [] Vinit;
         
         // Initialise shader programs
         
@@ -583,7 +580,10 @@ run()
             }
                 
             if(glfwGetKey(GLFW_KEY_ESC) == GLFW_PRESS)
-                    break;
+                break;
+            
+            if(glfwGetKey(GLFW_KEY_SPACE) == GLFW_PRESS)
+                sim.resetParticles(Pinit, Vinit, nParticles);
              
        
             if(g_bMouseMoved)
@@ -749,6 +749,9 @@ run()
             
             nFrameCount++;
         }
+        
+        delete [] Pinit;
+        delete [] Vinit;
         
         if(nFrameCount > 0)
         {
