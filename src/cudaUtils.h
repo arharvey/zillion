@@ -16,7 +16,7 @@ cudaCheckError(cudaGetLastError())
 namespace Zillion {
     
 inline
-void
+cudaError_t
 __cudaCheckError(cudaError_t status, int nLine, const char* szFile)
 {
     if(status != cudaSuccess)
@@ -25,8 +25,25 @@ __cudaCheckError(cudaError_t status, int nLine, const char* szFile)
                   << szFile << " at line " << nLine << std::endl;
         exit(EXIT_FAILURE);
     }
+    
+    return status;
 }
 
+
+template<class T>
+cudaError_t
+cudaMallocT(T*& p, size_t count)
+{
+    return cudaMalloc((void**)&p, count*sizeof(T));
+};
+
+
+template<class T>
+cudaError_t
+cudaMemcpyT(T* to, const T* from, size_t count, enum cudaMemcpyKind kind)
+{
+    return cudaMemcpy(to, from, count*sizeof(T), kind);
+};
 
 // ---------------------------------------------------------------------------
 

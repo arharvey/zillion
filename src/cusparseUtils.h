@@ -1,5 +1,5 @@
-#ifndef _zillion_cudaUtils_h
-#define _zillion_cudaUtils_h
+#ifndef _zillion_cusparseUtils_h
+#define _zillion_cusparseUtils_h
 
 #include <cstdlib>
 #include <iostream>
@@ -11,14 +11,32 @@ Zillion::__cusparseCheckStatus((status), __LINE__, __FILE__)
 
 
 namespace Zillion {
-    
+
 inline
 void
 __cusparseCheckStatus(cusparseStatus_t status, int nLine, const char* szFile)
 {
+    static const char* szStatusDesc[] =
+    {
+        "Success",
+        "Not initialized",
+        "Allocation failed",
+        "Invalid value",
+        "Architecture mismatch",
+        "Mapping error",
+        "Execution failed",
+        "Internal error",
+        "Matrix type not supported"
+    };
+    
     if(status != CUSPARSE_STATUS_SUCCESS)
     {
-        std::cerr << "CUSPARSE ERROR: "
+        const char* szDesc = "Unknown error";
+       
+        if(int(status) < sizeof(szStatusDesc)/sizeof(char*))
+            szDesc = szStatusDesc[int(status)];
+        
+        std::cerr << "CUSPARSE ERROR: " << szDesc << std::endl
                   << szFile << " at line " << nLine << std::endl;
         exit(EXIT_FAILURE);
     }
