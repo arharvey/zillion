@@ -10,6 +10,7 @@ set (CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -arch compute_11")
 FILE (GLOB zillion_src src/*.cpp src/*.h src/*.cu)
 
 cuda_add_executable (zillion ${zillion_src})
+CUDA_ADD_CUSPARSE_TO_TARGET (zillion)
 
 find_package (OpenGL REQUIRED)
 include_directories (${OPENGL_INCLUDE_DIR})

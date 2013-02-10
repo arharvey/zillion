@@ -100,6 +100,10 @@
 #  -- Adds the cublas library to the target (can be any target).  Handles
 #     whether you are in emulation mode or not.
 #
+#  CUDA_ADD_CUSPARSE_TO_TARGET( cuda_target )
+#  -- Adds the cusparse library to the target (can be any target).  Handles
+#     whether you are in emulation mode or not.
+#
 #  CUDA_ADD_EXECUTABLE( cuda_target file0 file1 ...
 #                       [WIN32] [MACOSX_BUNDLE] [EXCLUDE_FROM_ALL] [OPTIONS ...] )
 #  -- Creates an executable "cuda_target" which is made up of the files
@@ -216,6 +220,9 @@
 #  CUDA_CUBLAS_LIBRARIES -- Device or emulation library for the Cuda BLAS
 #                           implementation (alterative to:
 #                           CUDA_ADD_CUBLAS_TO_TARGET macro).
+#  CUDA_CUSPARSE_LIBRARIES -- Device or emulation library for the Cuda SPARSE
+#                           implementation (alterative to:
+#                           CUDA_ADD_CUSPARSE_TO_TARGET macro).
 #
 #
 #  James Bigler, NVIDIA Corp (nvidia.com - jbigler)
@@ -428,6 +435,7 @@ if(NOT "${CUDA_TOOLKIT_ROOT_DIR}" STREQUAL "${CUDA_TOOLKIT_ROOT_DIR_INTERNAL}")
   unset(CUDA_CUDA_LIBRARY CACHE)
   unset(CUDA_cublas_LIBRARY CACHE)
   unset(CUDA_cublasemu_LIBRARY CACHE)
+  unset(CUDA_cusparse_LIBRARY CACHE)
   unset(CUDA_cufft_LIBRARY CACHE)
   unset(CUDA_cufftemu_LIBRARY CACHE)
 endif()
@@ -608,6 +616,7 @@ if(CUDA_VERSION VERSION_LESS "3.1")
 endif()
 find_cuda_helper_libs(cufft)
 find_cuda_helper_libs(cublas)
+find_cuda_helper_libs(cusparse)
 
 if (CUDA_BUILD_EMULATION)
   set(CUDA_CUFFT_LIBRARIES ${CUDA_cufftemu_LIBRARY})
@@ -615,6 +624,7 @@ if (CUDA_BUILD_EMULATION)
 else()
   set(CUDA_CUFFT_LIBRARIES ${CUDA_cufft_LIBRARY})
   set(CUDA_CUBLAS_LIBRARIES ${CUDA_cublas_LIBRARY})
+  set(CUDA_CUSPARSE_LIBRARIES ${CUDA_cusparse_LIBRARY})
 endif()
 
 ########################
@@ -690,7 +700,7 @@ set(CUDA_TOOLKIT_ROOT_DIR_INTERNAL "${CUDA_TOOLKIT_ROOT_DIR}" CACHE INTERNAL
 set(CUDA_SDK_ROOT_DIR_INTERNAL "${CUDA_SDK_ROOT_DIR}" CACHE INTERNAL
   "This is the value of the last time CUDA_SDK_ROOT_DIR was set successfully." FORCE)
 
-include(${CMAKE_CURRENT_LIST_DIR}/FindPackageHandleStandardArgs.cmake)
+find_package(PackageHandleStandardArgs REQUIRED)
 find_package_handle_standard_args(CUDA
   REQUIRED_VARS
     CUDA_TOOLKIT_ROOT_DIR
@@ -1312,6 +1322,15 @@ macro(CUDA_ADD_CUBLAS_TO_TARGET target)
   else()
     target_link_libraries(${target} ${CUDA_cublas_LIBRARY})
   endif()
+endmacro()
+
+###############################################################################
+###############################################################################
+# CUDA ADD CUSPARSE TO TARGET
+###############################################################################
+###############################################################################
+macro(CUDA_ADD_CUSPARSE_TO_TARGET target)
+  target_link_libraries(${target} ${CUDA_cusparse_LIBRARY})
 endmacro()
 
 ###############################################################################
