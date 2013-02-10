@@ -20,6 +20,7 @@
 #include "simulationCUDA.h"
 
 #include "minMaxTest.h"
+#include "solverTest.h"
 
 const unsigned LEFT_BTN = 1;
 const unsigned MIDDLE_BTN = 2;
@@ -782,6 +783,8 @@ main(int argc, char* argv[])
     //Zillion::minTest(7*1024*1024, 23, Zillion::g_cudaDevice);
     //return 0;
     
+    Zillion::solverTest(Zillion::g_cudaDevice);
+    return 0;
     
 	glfwInit();
 
