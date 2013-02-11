@@ -196,10 +196,12 @@ resolveCollisionsKernel(float3* d_F, const int* const d_G, const int* const d_GN
         // vertically. This of course is just a heuristic :)
         for(int j = -strideY; j <= strideY; j += strideY)
         {
-            int collisions = 0;
+            
             
             for(int k = -strideZ; k <= strideZ; k += strideZ)
             {
+                int collisions = 0;
+                
                 for(int i = -1; i <= 1; ++i)
                 {
                     const int cell = central + i + j + k;
@@ -222,26 +224,28 @@ resolveCollisionsKernel(float3* d_F, const int* const d_G, const int* const d_GN
                         }
                     }
                 }
-            }
-            
-            // Now process queued collisions
-            for(int c = 0; c < collisions; ++c)
-            {
-                const int otherParticle = ids[blockDim.x*c + threadIdx.x];
                 
-                const float3 Rij = P - d_P[otherParticle];
-                const float Rij_distSq = Rij^Rij;
-                if(Rij_distSq < minDistSq)
+                // Now process queued collisions
+                for(int c = 0; c < collisions; ++c)
                 {
-                    // We have a collision! Push particles away from each other
-                    float Rij_dist = rsqrtf(Rij_distSq);
-                    const float3 Rij_dir = Rij * Rij_dist;
-                    Rij_dist *= Rij_distSq;
-                    
-                    const float3& Vij = V - d_V[otherParticle];
-                    addCollisionReaction(F, Rij_dir, 2*r-Rij_dist, Vij);
+                    const int otherParticle = ids[blockDim.x*c + threadIdx.x];
+
+                    const float3 Rij = P - d_P[otherParticle];
+                    const float Rij_distSq = Rij^Rij;
+                    if(Rij_distSq < minDistSq)
+                    {
+                        // We have a collision! Push particles away from each other
+                        float Rij_dist = rsqrtf(Rij_distSq);
+                        const float3 Rij_dir = Rij * Rij_dist;
+                        Rij_dist *= Rij_distSq;
+
+                        const float3& Vij = V - d_V[otherParticle];
+                        addCollisionReaction(F, Rij_dir, 2*r-Rij_dist, Vij);
+                    }
                 }
             }
+            
+            
         }
         
         d_F[n] += F;

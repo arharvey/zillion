@@ -13,7 +13,7 @@ namespace {
     const float SHEAR = 4;
     
     const unsigned MAX_OCCUPANCY = 8; // Particles per cell
-    const unsigned MAX_WORK_IDS = 9*MAX_OCCUPANCY;
+    const unsigned MAX_WORK_IDS = 3*MAX_OCCUPANCY;
     
     const float CUDA_FLOAT_MAX = 1e16;
 } // END ANONYMOUS NAMESPACE
