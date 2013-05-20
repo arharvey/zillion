@@ -44,6 +44,12 @@ handlePlaneCollisions(float3* Pd, float3* Vd, float3* Fd, unsigned N, float r,
                       const float4& plane, float restitution, float dynamicFriction,
                       const cudaDeviceProp& prop);
 
+void
+handleSphereCollisions(float3* Pd, float3* Vd, float3* Fd, unsigned N, float r,
+                       const float3& center, const float radius,
+                       float restitution, float dynamicFriction,
+                       const cudaDeviceProp& prop);
+
 
 void
 forwardEulerSolve(float3* Pd, float3* Vd,

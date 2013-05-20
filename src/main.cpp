@@ -16,6 +16,7 @@
 #include "spherePrimitive.h"
 #include "camera.h"
 #include "chequerTexture.h"
+#include "entity.h"
 
 #include "simulationCUDA.h"
 
@@ -234,8 +235,8 @@ public:
     
     ParticleProgram(const std::string& strShaderDir):
     Program(kNumUniforms),
-    m_vertex((strShaderDir+"particleVertex.glsl").c_str(), GL_VERTEX_SHADER),
-    m_fragment((strShaderDir+"particleFragment.glsl").c_str(), GL_FRAGMENT_SHADER)
+    m_vertex((strShaderDir+"multiDiffuseVertex.glsl").c_str(), GL_VERTEX_SHADER),
+    m_fragment((strShaderDir+"diffuseFragment.glsl").c_str(), GL_FRAGMENT_SHADER)
     {
         if(!m_vertex || !m_fragment)
             return;
@@ -275,6 +276,66 @@ const char* ParticleProgram::szUniforms[] = {
     "modelViewXf",
     "normalXf",
     "lightDirWorld"
+};
+
+
+// ---------------------------------------------------------------------------
+
+class BallProgram : public Program
+{
+public:
+    enum Uniform
+    {
+        kProjectionXf = 0,
+        kModelViewXf,
+        kModelViewNormalXf,
+        kLightDirWorld,
+        kColor,
+        kNumUniforms
+    };
+    
+    static const char* szUniforms[kNumUniforms];
+    
+    BallProgram(const std::string& strShaderDir):
+    Program(kNumUniforms),
+    m_vertex((strShaderDir+"singleDiffuseVertex.glsl").c_str(), GL_VERTEX_SHADER),
+    m_fragment((strShaderDir+"diffuseFragment.glsl").c_str(), GL_FRAGMENT_SHADER)
+    {
+        if(!m_vertex || !m_fragment)
+            return;
+        
+        GLuint program = glCreateProgram();
+        glAttachShader(program, m_vertex.id());
+        glAttachShader(program, m_fragment.id());
+        
+        glBindAttribLocation(program, 0, "position");
+        glBindAttribLocation(program, 1, "normal");
+        glBindAttribLocation(program, 2, "uv");
+
+        glBindFragDataLocation(program, 0, "outColor" );
+        
+        if(!link(program, "BallProgram"))
+            return;
+
+        // Program successfully linked
+        m_program = program;
+        
+        initUniformLocations(szUniforms, kNumUniforms);
+    }
+    
+    
+protected:
+    Shader m_vertex;
+    Shader m_fragment;
+};
+
+
+const char* BallProgram::szUniforms[] = {
+    "projectionXf",
+    "modelViewXf",
+    "normalXf",
+    "lightDirWorld",
+    "color"
 };
 
 
@@ -357,7 +418,7 @@ public:
     
     DomeProgram(const std::string& strShaderDir):
     Program(kNumUniforms),
-    m_vertex((strShaderDir+"domeVertex.glsl").c_str(), GL_VERTEX_SHADER),
+    m_vertex((strShaderDir+"flatVertex.glsl").c_str(), GL_VERTEX_SHADER),
     m_fragment((strShaderDir+"domeFragment.glsl").c_str(), GL_FRAGMENT_SHADER)
     {
         if(!m_vertex || !m_fragment)
@@ -397,6 +458,24 @@ const char* DomeProgram::szUniforms[] = {
     "color2"
 };
 
+
+// ---------------------------------------------------------------------------
+
+/// Return the 3x3 matrix for transforming normals
+Imath::M33f
+normalXform(const Imath::M44f& m)
+{
+    const float (*x)[4];
+    x = m.x;
+    Imath::M33f nXf(  x[0][0], x[0][1], x[0][2],
+                      x[1][0], x[1][1], x[1][2],
+                      x[2][0], x[2][1], x[2][2]);
+    nXf.invert();
+    nXf.transpose();
+    
+    return nXf;
+}
+        
 
 
 // ---------------------------------------------------------------------------
@@ -465,6 +544,15 @@ init()
 }
 
 
+enum InteractionMode
+{
+    kReady,
+    kTumbleViewport,
+    kDragAcquire,
+    kDragFail,
+    kDrag
+};
+
 bool
 run()
 {
@@ -485,7 +573,15 @@ run()
     if(!domeProg)
         return false;
     
+    DomeProgram ballProg(szShadersDir);
+    if(!ballProg)
+        return false;
+    
     {
+        InteractionMode mode = kReady;
+        Imath::V3f dragStartPt;
+        Imath::Plane3f dragPlane;
+        
         const unsigned nDimNum = GRID_DIM;
         const float gridSize = GRID_SIZE;
         const float cellSize = gridSize / float(nDimNum);
@@ -495,7 +591,16 @@ run()
         // Create VBO for sphere
         PlanePrimitive ground( Imath::Plane3f(Imath::V3f(0.0, 2.0, 0.0), 0.0));
         SpherePrimitive dome(FAR, 100, 50);
-        SpherePrimitive sphere(1.0, 12, 6);
+        SpherePrimitive particle(1.0, 12, 6);
+        
+        const float ballRadius = 0.2;
+        Imath::M44f ballInitXf;
+        ballInitXf.makeIdentity();
+        ballInitXf.setTranslation(Imath::V3f(0.0, ballRadius, 0.0));
+        
+        SphereEntity ballEntity(ballRadius);
+        ballEntity.setXform(ballInitXf);
+        SpherePrimitive ball(ballRadius, 24, 12);
        
         // Initialize simulation
         const unsigned nParticles = nDimNum*nDimNum*nDimNum;
@@ -513,13 +618,14 @@ run()
         initVelocities(Vinit, Pinit, nParticles, 0, Imath::V3f(0.0, 0.25, 0.0));
         
         SimulationCUDA sim(g_cudaDevice, Pinit, Vinit, nParticles, particleRadius);
+        sim.addCollidable(&ballEntity);
         
         // Initialise shader programs
         
         particleProg.use();
         particleProg.set(ParticleProgram::kScale, particleRadius);
         
-        sphere.bind();
+        particle.bind();
         GLuint colorBuffer;
         glGenBuffers(1, &colorBuffer);
     
@@ -541,7 +647,7 @@ run()
         glVertexAttribDivisorARB(colorAttrib, 1);
         
         glBindBuffer(GL_ARRAY_BUFFER, 0);
-        sphere.unbind();
+        particle.unbind();
         
         groundProg.use();
         groundProg.set(GroundProgram::kTex, 0);
@@ -550,6 +656,9 @@ run()
         domeProg.set(DomeProgram::kColor0, Imath::V3f(0, 0, 0));
         domeProg.set(DomeProgram::kColor1, Imath::V3f(0.5, 0.6, 1.0));
         domeProg.set(DomeProgram::kColor2, Imath::V3f(0, 0, 0));
+        
+        ballProg.use();
+        ballProg.set(BallProgram::kColor, Imath::V3f(0.0, 0.0, 1.0));
         
         glCullFace(GL_BACK);
         
@@ -566,6 +675,8 @@ run()
         int windowWidth = WIDTH, windowHeight = HEIGHT;
         while( glfwGetWindowParam(GLFW_OPENED) && nFrameCount < 1e8)
         {
+            // Update projection
+            
             int currentWindowWidth = 0, currentWindowHeight = 0;
             glfwGetWindowSize(&currentWindowWidth, &currentWindowHeight);
             
@@ -578,47 +689,8 @@ run()
                 glfwSetWindowSize(windowWidth, windowHeight);
                 glViewport(0, 0, windowWidth, windowHeight);
             }
-                
-            if(glfwGetKey(GLFW_KEY_ESC) == GLFW_PRESS)
-                break;
-            
-            if(glfwGetKey(GLFW_KEY_SPACE) == GLFW_PRESS)
-                sim.resetParticles(Pinit, Vinit, nParticles);
-             
-       
-            if(g_bMouseMoved)
-            {
-                if(g_mouseButtons & LEFT_BTN)
-                {
-
-                    float altitudeDelta = float(g_mouseRelativeY) *
-                                            toRadians(10) / 50.0;
-
-                    float azimuthDelta = float(-g_mouseRelativeX) *
-                                            toRadians(10) / 50.0;
-
-                    camera.setAltitude(camera.altitude() + altitudeDelta);
-                    camera.setAzimuth(camera.azimuth() + azimuthDelta);
-                }
-                else
-                if(g_mouseButtons & RIGHT_BTN)
-                {
-                    float delta = float(g_mouseRelativeX)/100.0 * 0.25f;
-
-                    if(delta < 0.0)
-                        delta = 1.0-delta;
-                    else
-                        delta = 1.0/(1.0+delta);
-
-                    camera.scaleDistance(delta);
-                }
-                
-                g_bMouseMoved = false;
-            }
             
             
-            // Update projection
-        
             Imath::Frustumf frustum(NEAR, FAR, FOV, 0.0,
                                     float(windowWidth)/float(windowHeight));
 
@@ -632,39 +704,130 @@ run()
 
             domeProg.use();
             domeProg.set(DomeProgram::kProjectionXf, projXf);
-        
+            
+            ballProg.use();
+            ballProg.set(BallProgram::kProjectionXf, projXf);
+            
+            
+            // Get user input
+            
+            if(glfwGetKey(GLFW_KEY_ESC) == GLFW_PRESS)
+                break;
+            
+            if(glfwGetKey(GLFW_KEY_SPACE) == GLFW_PRESS)
+                sim.resetParticles(Pinit, Vinit, nParticles);
+             
+       
+            if(mode == kReady)
+            {
+                // Enter tumble mode?
+                if(glfwGetKey(GLFW_KEY_LALT) == GLFW_PRESS)
+                    mode = kTumbleViewport;
+                
+                // Enter drag mode?
+                else if(g_mouseButtons == LEFT_BTN)
+                    mode = kDragAcquire;
+            } 
+                    
+            if(mode == kTumbleViewport)
+            {
+                if(glfwGetKey(GLFW_KEY_LALT) != GLFW_PRESS)
+                    mode = kReady;
+                else
+                {
+                    if(g_bMouseMoved)
+                    {
+                        if(g_mouseButtons & LEFT_BTN)
+                        {
+
+                            float altitudeDelta = float(g_mouseRelativeY) *
+                                                    toRadians(10) / 50.0;
+
+                            float azimuthDelta = float(-g_mouseRelativeX) *
+                                                    toRadians(10) / 50.0;
+
+                            camera.setAltitude(camera.altitude() + altitudeDelta);
+                            camera.setAzimuth(camera.azimuth() + azimuthDelta);
+                        }
+                        else
+                        if(g_mouseButtons & RIGHT_BTN)
+                        {
+                            float delta = float(g_mouseRelativeX)/100.0 * 0.25f;
+
+                            if(delta < 0.0)
+                                delta = 1.0-delta;
+                            else
+                                delta = 1.0/(1.0+delta);
+
+                            camera.scaleDistance(delta);
+                        }
+
+                        g_bMouseMoved = false;
+                    }
+                }
+            }
+            else
+            if(mode == kDragAcquire)
+            {
+                Imath::Line3f ray =
+                    frustum.projectScreenToRay(Imath::V2f(2.0f*g_mouseX/float(windowWidth)-1.0,
+                                                          -(2.0f*g_mouseY/float(windowHeight)-1.0)));
+                
+                ray = ray*camera.cameraTransform();
+                
+                //std::cerr << ray << std::endl;
+                
+                float t = 0.0f;
+                bool bHit = ballEntity.intersect(ray.pos, ray.dir, t);
+                if(bHit)
+                {
+                    dragStartPt = ray.pos + ray.dir*t;
+                    
+                    const Imath::M44f& cXf = camera.cameraTransform();
+                    Imath::V3f screenNormal(cXf.x[2][0], cXf.x[2][1], cXf.x[2][2]);
+                    dragPlane = Imath::Plane3f(dragStartPt, screenNormal);
+                    mode = kDrag;
+                }
+                else
+                    mode = kDragFail;
+            }
+            else
+            if(mode == kDrag)
+            {
+                // Stop dragging if left mouse button to be released
+                if((g_mouseButtons & LEFT_BTN) == 0)
+                    mode = kReady;
+                else
+                {
+                    Imath::Line3f ray =
+                    frustum.projectScreenToRay(Imath::V2f(2.0f*g_mouseX/float(windowWidth)-1.0,
+                                                          -(2.0f*g_mouseY/float(windowHeight)-1.0)));
+                
+                    ray = ray*camera.cameraTransform();
+                
+                    Imath::V3f dragPt;
+                    if(dragPlane.intersect(ray, dragPt))
+                    {
+                        Imath::M44f& xf = ballEntity.xform();
+                        xf.setTranslation(xf.translation() + (dragPt-dragStartPt));
+                        
+                        dragStartPt = dragPt;
+                    }
+                }
+            }
+            else
+            if(mode == kDragFail)
+            {
+                // Wait for left mouse button to be released
+                if((g_mouseButtons & LEFT_BTN) == 0)
+                    mode = kReady;
+            }
+
             
             // View
             
             Imath::M44f viewXf = camera.viewTransform();
-            
-            // View Normal transform
-            
-            const float (*x)[4];
-            x = viewXf.x;
-            Imath::M33f viewNormalXf(  x[0][0], x[0][1], x[0][2],
-                                       x[1][0], x[1][1], x[1][2],
-                                       x[2][0], x[2][1], x[2][2]);
-            viewNormalXf.invert();
-            viewNormalXf.transpose();
-            
-            // Model
-            
-            Imath::M44f modelXf;
-            modelXf.makeIdentity();
-            
-            // ModelView
-            
-            Imath::M44f modelViewXf = modelXf * viewXf;
-            
-            // ModelView Normal transform
-            
-            x = modelViewXf.x;
-            Imath::M33f modelViewNormalXf(  x[0][0], x[0][1], x[0][2],
-                                            x[1][0], x[1][1], x[1][2],
-                                            x[2][0], x[2][1], x[2][2]);
-            modelViewNormalXf.invert();
-            modelViewNormalXf.transpose();
+            Imath::M33f viewNormalXf = normalXform(viewXf);
             
             // Lights
         
@@ -682,9 +845,8 @@ run()
             glDisable(GL_CULL_FACE); // Make sure we can see inside the sphere
             
             
-
             Imath::M44f domeViewXf = viewXf;
-            domeViewXf[3][0] = 0.0;
+            domeViewXf[3][0] = 0.0; // Always centered on camera
             domeViewXf[3][1] = 0.0; 
             domeViewXf[3][2] = 0.0;
 
@@ -712,15 +874,36 @@ run()
             ground.bind();
             ground.draw();
             ground.unbind();
-              
+            
+            // Ball
+            
+            Imath::M44f modelViewXf;
+            Imath::M33f modelViewNormalXf;
+            
+            modelViewXf = ballEntity.xform() * viewXf;
+            modelViewNormalXf = normalXform(modelViewXf);
+            
+            ballProg.use();
+            ballProg.set(BallProgram::kModelViewXf, modelViewXf);
+            ballProg.set(BallProgram::kModelViewNormalXf, modelViewNormalXf);
+            ballProg.set(BallProgram::kLightDirWorld, lightDir);
+            
+            ball.bind();
+            ball.draw();
+            ball.unbind();
+            
+            
             // Particle system
+            
+            modelViewXf = viewXf; // Particle system has identity modelXf
+            modelViewNormalXf = normalXform(modelViewXf);
             
             particleProg.use();
             particleProg.set(ParticleProgram::kModelViewXf, modelViewXf);
             particleProg.set(ParticleProgram::kModelViewNormalXf, modelViewNormalXf);
             particleProg.set(ParticleProgram::kLightDirWorld, lightDir);
             
-            sphere.bind();
+            particle.bind();
             
             sim.P().bind(); // Particle positions
             GLint centerAttrib = glGetAttribLocation(particleProg, "center");
@@ -728,8 +911,8 @@ run()
             glVertexAttribPointer(centerAttrib, 3, GL_FLOAT, GL_FALSE, 0, 0);
             glVertexAttribDivisorARB(centerAttrib, 1);
             
-            sphere.drawInstances(nParticles);
-            sphere.unbind();
+            particle.drawInstances(nParticles);
+            particle.unbind();
             
             glDisable(GL_DEPTH_TEST);
             glDisable(GL_CULL_FACE);

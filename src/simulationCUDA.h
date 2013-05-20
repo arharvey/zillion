@@ -2,6 +2,7 @@
 #define _zillion_simulation_h
 
 #include "sharedBuffer.h"
+#include "entity.h"
 
 #define SANITY_CHECK_COLLISION_GRID 0
 
@@ -20,6 +21,8 @@ public:
     void resetParticles(const float3* Pinit, const float3* Vinit,
                         unsigned nParticles);
     virtual void stepForward(double dt);
+    
+    void addCollidable(SphereEntity* pCollidable);
     
     SharedBuffer<float3>& P() const {return *m_P[m_currentBuffer];}
     
@@ -48,6 +51,8 @@ protected:
     
     int m_nParticles;
     const float m_particleRadius;
+    
+    SphereEntity* m_pCollidable;
     
 #ifdef SANITY_CHECK_COLLISION_GRID
     void sanityCheckCollisionGrid(int nCells, const int3& collDims);

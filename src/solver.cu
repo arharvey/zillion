@@ -337,6 +337,61 @@ handlePlaneCollisions(float3* Pd, float3* Vd, float3* Fd,
 
 __global__
 void
+handleSphereCollisionsKernel(float3* Pd, float3* Vd, float3* Fd,
+                            unsigned N, float r,
+                            const float3 center, const float radius,
+                            float restitution, float kineticFriction)
+{
+    const float minDistSq = (radius+r)*(radius+r);
+    
+    unsigned n = blockIdx.x*blockDim.x + threadIdx.x;
+    while(n < N)
+    {
+        float3& P = Pd[n];
+        float3& V = Vd[n];
+        float3& F = Fd[n];
+        
+        const float3 Rij = P - center;
+        const float Rij_distSq = Rij^Rij;
+        if(Rij_distSq < minDistSq)
+        {
+            // We have a collision! Push particles away from each other
+            float Rij_dist = rsqrtf(Rij_distSq);
+            const float3 Rij_dir = Rij * Rij_dist;
+            Rij_dist *= Rij_distSq;
+
+            const float3& Vij = V;//- d_V[otherParticle];
+            addCollisionReaction(F, Rij_dir, (radius+r)-Rij_dist, Vij);
+        }
+        
+        n += blockDim.x * gridDim.x;
+    }
+    
+}
+
+
+__host__
+void
+handleSphereCollisions(float3* Pd, float3* Vd, float3* Fd, unsigned N, float r,
+                       const float3& center, const float radius,
+                       float restitution, float dynamicFriction,
+                       const cudaDeviceProp& prop)
+{
+    int nBlocks, nThreads;
+    calcDims(nBlocks, nThreads, N, prop);
+    
+    handleSphereCollisionsKernel<<<nBlocks, 256>>>(Pd, Vd, Fd, N, r,
+                                                       center, radius,
+                                                       restitution,
+                                                       dynamicFriction);
+    cudaCheckLastError();
+}
+
+
+// ---------------------------------------------------------------------------
+
+__global__
+void
 forwardEulerSolveKernel(float3* Pd, float3* Vd,
                         const float3* P0d, const float3* Fd,
                         unsigned N,

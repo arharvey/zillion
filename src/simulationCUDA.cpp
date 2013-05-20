@@ -15,6 +15,8 @@
 #include "simulationCUDA.h"
 #include "solver.h"
 
+#include <OpenEXR/ImathMatrix.h>
+
 namespace Zillion {
     
 // ---------------------------------------------------------------------------
@@ -26,7 +28,8 @@ SimulationCUDA::SimulationCUDA(int cudaDevice,
 m_cudaDevice(cudaDevice),
 m_Fd(NULL), m_Vd(NULL),
 m_currentBuffer(0),
-m_nParticles(0), m_particleRadius(particleRadius)
+m_nParticles(0), m_particleRadius(particleRadius),
+m_pCollidable(NULL)
 
 #ifdef SANITY_CHECK_COLLISION_GRID
 , m_nCells(0), m_GNh(NULL), m_Gh(NULL)
@@ -144,6 +147,13 @@ SimulationCUDA::resetParticles(const float3* Pinit, const float3* Vinit,
 
 
 void
+SimulationCUDA::addCollidable(SphereEntity* pCollidable)
+{
+    m_pCollidable = pCollidable;
+}
+    
+
+void
 SimulationCUDA::stepForward(double dt)
 {
     if(m_nParticles == 0)
@@ -236,6 +246,15 @@ SimulationCUDA::stepForward(double dt)
     rampPlane = make_float4(0, _1_R2, -_1_R2, -d+0.5);
     handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
                           rampPlane, RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+    
+    if(m_pCollidable != NULL)
+    {
+        const Imath::V3f& o = m_pCollidable->xform().translation();
+        const float r = m_pCollidable->radius();
+        handleSphereCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
+                               make_float3(o.x, o.y, o.z), r,
+                               RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+    }
     
     forwardEulerSolve(P(), m_Vd, prevP(), m_Fd, m_nParticles, MASS, dt,
                       m_cudaProp);

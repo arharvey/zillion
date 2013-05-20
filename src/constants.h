@@ -21,11 +21,11 @@ const unsigned HEIGHT = 768;
     
 const float FOV = toRadians(60.0);
     
-const float GRAVITY = -4;
+const float GRAVITY = -9.8;
 const float MASS = 1;
-const float RESTITUTION = 0.4;
-const float STATIC_FRICTION = 1;
-const float KINETIC_FRICTION = 0.1;
+const float RESTITUTION = 0.05;
+const float STATIC_FRICTION = 0.6;
+const float KINETIC_FRICTION = 0.6;
     
 } // END NAMESPACE ANONYMOUS
 } // END NAMESPACE ZILLION

@@ -2,7 +2,6 @@
 
 in vec3 outSurfaceColor;
 in float outIntensity;
-in vec2 outUV;
 
 out vec4 outColor;
 
