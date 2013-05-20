@@ -35,21 +35,17 @@ void
 resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
                  const float3* const d_P, const float3* const d_V, const int N, 
                  const float3 origin, const int3 dims, const float cellSize,
-                 const float r,
-                 const cudaDeviceProp& prop);
+                 const float r, const cudaDeviceProp& prop);
 
 
 void
 handlePlaneCollisions(float3* Pd, float3* Vd, float3* Fd, unsigned N, float r,
-                      const float4& plane, float restitution, float dynamicFriction,
-                      const cudaDeviceProp& prop);
+                      const float4& plane, const cudaDeviceProp& prop);
 
 void
 handleSphereCollisions(float3* Pd, float3* Vd, float3* Fd, unsigned N, float r,
                        const float3& center, const float3& velocity,
-                       const float radius,
-                       float restitution, float dynamicFriction,
-                       const cudaDeviceProp& prop);
+                       const float radius, const cudaDeviceProp& prop);
 
 
 void

@@ -164,6 +164,25 @@ addCollisionReaction(float3& F, const float3& Rij_dir,
 }
 
 
+inline
+__device__
+void
+addCollisionReactionT(float3& F, const float3& Rij_dir,
+                      const float d, const float3& Vij,
+                      const float repulsion)
+{
+    // Repulsive force
+    F += repulsion*d * Rij_dir;
+    
+    // Damping force
+    const float3 Vijn = (Vij^Rij_dir)*Rij_dir;
+    F += -DAMPING * Vijn;
+    
+    // Shear force
+    F += -SHEAR*(Vij - Vijn);
+};
+
+
 
 // ---------------------------------------------------------------------------
 
@@ -290,8 +309,7 @@ resolveCollisions(float3* d_F, const int* const d_G, const int* const d_GN,
 __global__
 void
 handlePlaneCollisionsKernel(float3* Pd, float3* Vd, float3* Fd,
-                            unsigned N, float r, const float4 plane,
-                            float restitution, float kineticFriction)
+                            unsigned N, float r, const float4 plane)
 {
     const float3 planeDir = make_float3(plane.x, plane.y, plane.z);
     
@@ -320,15 +338,12 @@ __host__
 void
 handlePlaneCollisions(float3* Pd, float3* Vd, float3* Fd,
                       unsigned N, float r, const float4& plane,
-                      float restitution, float kineticFriction,
                       const cudaDeviceProp& prop)
 {
     int nBlocks, nThreads;
     calcDims(nBlocks, nThreads, N, prop);
     
-    handlePlaneCollisionsKernel<<<nBlocks, nThreads>>>(Pd, Vd, Fd, N, r, plane,
-                                                       restitution,
-                                                       kineticFriction);
+    handlePlaneCollisionsKernel<<<nBlocks, nThreads>>>(Pd, Vd, Fd, N, r, plane);
     cudaCheckLastError();
 }
 
@@ -340,8 +355,7 @@ void
 handleSphereCollisionsKernel(float3* Pd, float3* Vd, float3* Fd,
                             unsigned N, float r,
                             const float3 center, const float3 velocity,
-                            const float radius,
-                            float restitution, float kineticFriction)
+                            const float radius)
 {
     const float minDistSq = (radius+r)*(radius+r);
     
@@ -349,20 +363,21 @@ handleSphereCollisionsKernel(float3* Pd, float3* Vd, float3* Fd,
     while(n < N)
     {
         float3& P = Pd[n];
-        float3& V = Vd[n];
-        float3& F = Fd[n];
         
         const float3 Rij = P - center;
         const float Rij_distSq = Rij^Rij;
         if(Rij_distSq < minDistSq)
         {
+            float3& V = Vd[n];
+            float3& F = Fd[n];
+            
             // We have a collision! Push particles away from each other
             float Rij_dist = rsqrtf(Rij_distSq);
             const float3 Rij_dir = Rij * Rij_dist;
             Rij_dist *= Rij_distSq;
 
             const float3& Vij = V - velocity;
-            addCollisionReaction(F, Rij_dir, (radius+r)-Rij_dist, Vij);
+            addCollisionReactionT(F, Rij_dir, (radius+r)-Rij_dist, Vij, 1000);
         }
         
         n += blockDim.x * gridDim.x;
@@ -376,16 +391,13 @@ void
 handleSphereCollisions(float3* Pd, float3* Vd, float3* Fd, unsigned N, float r,
                        const float3& center, const float3& velocity,
                        const float radius,
-                       float restitution, float dynamicFriction,
                        const cudaDeviceProp& prop)
 {
     int nBlocks, nThreads;
     calcDims(nBlocks, nThreads, N, prop);
     
-    handleSphereCollisionsKernel<<<nBlocks, 256>>>(Pd, Vd, Fd, N, r,
-                                                       center, velocity, radius,
-                                                       restitution,
-                                                       dynamicFriction);
+    handleSphereCollisionsKernel<<<nBlocks, nThreads>>>(Pd, Vd, Fd, N, r,
+                                                       center, velocity, radius);
     cudaCheckLastError();
 }
 

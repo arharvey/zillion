@@ -223,8 +223,7 @@ SimulationCUDA::stepForward(double dt)
     
     const float4 groundPlane = make_float4(0.0, 1.0, 0.0, 0.0);
     handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
-                          groundPlane,
-                          RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+                          groundPlane, m_cudaProp);
     
     
     
@@ -233,19 +232,19 @@ SimulationCUDA::stepForward(double dt)
     
     float4 rampPlane = make_float4(-_1_R2, _1_R2, 0.0, -d+1);
     handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
-                          rampPlane, RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+                          rampPlane, m_cudaProp);
     
     rampPlane = make_float4(_1_R2, _1_R2, 0.0, -d+1);
     handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
-                          rampPlane, RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+                          rampPlane, m_cudaProp);
     
     rampPlane = make_float4(0, _1_R2, _1_R2, -d+0.5);
     handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
-                          rampPlane, RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+                          rampPlane, m_cudaProp);
     
     rampPlane = make_float4(0, _1_R2, -_1_R2, -d+0.5);
     handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
-                          rampPlane, RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+                          rampPlane, m_cudaProp);
     
     if(m_pCollidable != NULL)
     {
@@ -256,7 +255,7 @@ SimulationCUDA::stepForward(double dt)
         handleSphereCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
                                make_float3(c.x, c.y, c.z),
                                make_float3(v.x, v.y, v.z), r,
-                               RESTITUTION, KINETIC_FRICTION, m_cudaProp);
+                               m_cudaProp);
     }
     
     forwardEulerSolve(P(), m_Vd, prevP(), m_Fd, m_nParticles, MASS, dt,
