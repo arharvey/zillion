@@ -594,12 +594,9 @@ run()
         SpherePrimitive particle(1.0, 12, 6);
         
         const float ballRadius = 0.2;
-        Imath::M44f ballInitXf;
-        ballInitXf.makeIdentity();
-        ballInitXf.setTranslation(Imath::V3f(0.0, ballRadius, 0.0));
         
-        SphereEntity ballEntity(ballRadius);
-        ballEntity.setXform(ballInitXf);
+        Imath::V3f ballCenterDragEnd = Imath::V3f(0.0, ballRadius, 0.0);
+        SphereEntity ballEntity(ballCenterDragEnd, ballRadius);
         SpherePrimitive ball(ballRadius, 24, 12);
        
         // Initialize simulation
@@ -808,9 +805,10 @@ run()
                     Imath::V3f dragPt;
                     if(dragPlane.intersect(ray, dragPt))
                     {
-                        Imath::M44f& xf = ballEntity.xform();
-                        xf.setTranslation(xf.translation() + (dragPt-dragStartPt));
+                        Imath::V3f c = ballEntity.center();
+                        c += dragPt-dragStartPt;
                         
+                        ballCenterDragEnd = c;
                         dragStartPt = dragPt;
                     }
                 }
@@ -925,8 +923,21 @@ run()
             const double currentTime = glfwGetTime();
             const double dt = std::min(currentTime - prevTime, 1.0/60.0);
             
+            const Imath::V3f ballCenterDragStart = ballEntity.center();
             for(int n = 0; n < ITERATIONS; n++)
-                sim.stepForward(dt/ITERATIONS);
+            {
+                const float dtSubStep = dt/ITERATIONS;
+                
+                const float a = float(n+1)/float(ITERATIONS);
+                
+                Imath::V3f c = (1.0f-a)*ballCenterDragStart +
+                                      a*ballCenterDragEnd;
+                
+                ballEntity.setCenter(c);
+                ballEntity.updateDynamics(dtSubStep);
+                
+                sim.stepForward(dtSubStep);
+            }
               
             prevTime = currentTime;
             

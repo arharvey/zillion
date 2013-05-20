@@ -249,10 +249,13 @@ SimulationCUDA::stepForward(double dt)
     
     if(m_pCollidable != NULL)
     {
-        const Imath::V3f& o = m_pCollidable->xform().translation();
+        const Imath::V3f& c = m_pCollidable->center();
+        const Imath::V3f& v = m_pCollidable->velocity();
         const float r = m_pCollidable->radius();
+        
         handleSphereCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
-                               make_float3(o.x, o.y, o.z), r,
+                               make_float3(c.x, c.y, c.z),
+                               make_float3(v.x, v.y, v.z), r,
                                RESTITUTION, KINETIC_FRICTION, m_cudaProp);
     }
     

@@ -18,9 +18,10 @@ Entity::~Entity()
 // ---------------------------------------------------------------------------
 
 
-SphereEntity::SphereEntity(float radius):
-m_radius(radius)
+SphereEntity::SphereEntity(const Imath::V3f& c, float radius):
+m_radius(radius), m_prevCenter(c), m_velocity()
 {
+    setCenter(c);
 }
 
 
@@ -68,7 +69,14 @@ SphereEntity::intersect(const Imath::V3f& origin, const Imath::V3f& dir, float& 
     return false;
 }
     
-    
+
+void
+SphereEntity::updateDynamics(float dt)
+{
+    m_velocity = (center() - m_prevCenter) / dt;
+    m_prevCenter = center();
+}
+
 // ---------------------------------------------------------------------------
     
 }

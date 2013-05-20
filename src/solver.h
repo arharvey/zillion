@@ -8,7 +8,7 @@ namespace Zillion {
 // ---------------------------------------------------------------------------
 
 namespace {
-    const float REPULSION = 3000;
+    const float REPULSION = 2500;
     const float DAMPING = 4;
     const float SHEAR = 4;
     
@@ -46,7 +46,8 @@ handlePlaneCollisions(float3* Pd, float3* Vd, float3* Fd, unsigned N, float r,
 
 void
 handleSphereCollisions(float3* Pd, float3* Vd, float3* Fd, unsigned N, float r,
-                       const float3& center, const float radius,
+                       const float3& center, const float3& velocity,
+                       const float radius,
                        float restitution, float dynamicFriction,
                        const cudaDeviceProp& prop);
 
