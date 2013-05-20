@@ -6,8 +6,8 @@ uniform mat3 normalXf;
 uniform vec3 lightDirWorld;
 uniform vec3 color;
 
-in vec3 normal;
 in vec3 position;
+in vec3 normal;
 in vec2 uv;
 
 out float outIntensity;

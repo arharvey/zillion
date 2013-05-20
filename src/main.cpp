@@ -64,6 +64,13 @@ initPositions(float3* pPts, float nDim, GLfloat size, int nMaxParticles,
 }
 
 
+Imath::V3f
+tintColor(const Imath::V3f color, const Imath::V3f& tint, const float mix)
+{
+    return mix*color + (1.0f-mix)*tint;
+}
+
+
 void
 initColors(float3* pColor, int nParticles, const Imath::V3f& tint, float mix)
 {
@@ -74,7 +81,7 @@ initColors(float3* pColor, int nParticles, const Imath::V3f& tint, float mix)
     {
         Imath::V3f CC(frand(), frand(), frand());
         CC *= 1.0f / std::max(CC.x, std::max(CC.y, CC.z));
-        CC = mix*CC + (1.0f-mix)*tint;
+        CC = tintColor(CC, tint, mix);
 
         C->x = CC.x;
         C->y = CC.y;
@@ -583,7 +590,7 @@ run()
     if(!domeProg)
         return false;
     
-    DomeProgram ballProg(szShadersDir);
+    BallProgram ballProg(szShadersDir);
     if(!ballProg)
         return false;
     
@@ -607,7 +614,7 @@ run()
         
         Imath::V3f ballCenterDragEnd = Imath::V3f(0.0, ballRadius, 0.0);
         SphereEntity ballEntity(ballCenterDragEnd, ballRadius);
-        SpherePrimitive ball(ballRadius, 24, 12);
+        SpherePrimitive ball(ballRadius, 48, 24);
        
         // Initialize simulation
         const unsigned nParticles = nDimNum*nDimNum*nDimNum;
@@ -665,7 +672,9 @@ run()
         domeProg.set(DomeProgram::kColor2, Imath::V3f(0, 0, 0));
         
         ballProg.use();
-        ballProg.set(BallProgram::kColor, Imath::V3f(0.0, 0.0, 1.0));
+        ballProg.set(BallProgram::kColor, tintColor(Imath::V3f(0.0, 0.0, 1.0),
+                                                    Imath::V3f(0.9, 0.9, 1.0),
+                                                    0.5) );
         
         glCullFace(GL_BACK);
         
@@ -956,15 +965,15 @@ run()
             {
                 const float dtSubStep = dt/ITERATIONS;
                 
-                const float a = float(n+1)/float(ITERATIONS);
-                
-                Imath::V3f c = (1.0f-a)*ballCenterDragStart +
-                                      a*ballCenterDragEnd;
-                
-                ballEntity.setCenter(c);
                 ballEntity.updateDynamics(dtSubStep);
                 
                 sim.stepForward(dtSubStep);
+                
+                // Update ball position in a piecemeal fashion
+                const float a = float(n+1)/float(ITERATIONS);
+                Imath::V3f c = (1.0f-a)*ballCenterDragStart +
+                                      a*ballCenterDragEnd;
+                ballEntity.setCenter(c);
             }
               
             prevTime = currentTime;

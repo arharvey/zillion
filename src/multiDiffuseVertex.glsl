@@ -8,8 +8,8 @@ uniform mat3 normalXf;
 
 uniform vec3 lightDirWorld;
 
-in vec3 normal;
 in vec3 position;
+in vec3 normal;
 in vec2 uv;
 in vec3 center;
 in vec3 color;
