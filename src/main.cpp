@@ -502,6 +502,16 @@ onMouseButtonPressed(int button, int action)
         }
             
         
+        case GLFW_MOUSE_BUTTON_MIDDLE:
+        {
+            if(action == GLFW_PRESS)
+                g_mouseButtons |= MIDDLE_BTN;
+            else
+                g_mouseButtons &= ~MIDDLE_BTN;
+            
+            break;
+        }
+        
         case GLFW_MOUSE_BUTTON_RIGHT:
         {
             if(action == GLFW_PRESS)
@@ -666,8 +676,8 @@ run()
         TumbleCamera camera;
         camera.setCenter(Imath::V3f(0.0, 0.5, 0.0));
         camera.setDistance(3.0f);
-        camera.setAltitude(toRadians(0));
-        camera.setAzimuth(toRadians(0));
+        camera.setAltitude(toRadians(10));
+        camera.setAzimuth(toRadians(30));
         
         int windowWidth = WIDTH, windowHeight = HEIGHT;
         while( glfwGetWindowParam(GLFW_OPENED) && nFrameCount < 1e8)
@@ -738,10 +748,10 @@ run()
                         {
 
                             float altitudeDelta = float(g_mouseRelativeY) *
-                                                    toRadians(10) / 50.0;
+                                                    toRadians(20) / 50.0;
 
                             float azimuthDelta = float(-g_mouseRelativeX) *
-                                                    toRadians(10) / 50.0;
+                                                    toRadians(20) / 50.0;
 
                             camera.setAltitude(camera.altitude() + altitudeDelta);
                             camera.setAzimuth(camera.azimuth() + azimuthDelta);
@@ -749,7 +759,7 @@ run()
                         else
                         if(g_mouseButtons & RIGHT_BTN)
                         {
-                            float delta = float(g_mouseRelativeX)/100.0 * 0.25f;
+                            float delta = float(g_mouseRelativeX)/50.0 * 0.25f;
 
                             if(delta < 0.0)
                                 delta = 1.0-delta;
@@ -757,6 +767,24 @@ run()
                                 delta = 1.0/(1.0+delta);
 
                             camera.scaleDistance(delta);
+                        }
+                        else
+                        if (g_mouseButtons & MIDDLE_BTN)
+                        {
+                            float hDelta = float(-g_mouseRelativeX) / 50.0;
+                            float vDelta = float(g_mouseRelativeY) / 50.0;
+
+                            const float (*x)[4] = camera.cameraTransform().x;
+
+                            const Imath::V3f hAxis(x[0][0], x[0][1], x[0][2]);
+                            const Imath::V3f vAxis(x[1][0], x[1][1], x[1][2]);
+
+                            Imath::V3f c = camera.center();
+                            float d = camera.distance();
+
+                            c += (d/4.0f)*(hDelta*hAxis + vDelta*vAxis);
+
+                            camera.setCenter(c);
                         }
 
                         g_bMouseMoved = false;
