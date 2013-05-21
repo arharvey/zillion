@@ -396,7 +396,7 @@ handleSphereCollisions(float3* Pd, float3* Vd, float3* Fd, unsigned N, float r,
     int nBlocks, nThreads;
     calcDims(nBlocks, nThreads, N, prop);
     
-    handleSphereCollisionsKernel<<<nBlocks, nThreads>>>(Pd, Vd, Fd, N, r,
+    handleSphereCollisionsKernel<<<nBlocks, 256>>>(Pd, Vd, Fd, N, r,
                                                        center, velocity, radius);
     cudaCheckLastError();
 }

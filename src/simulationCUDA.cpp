@@ -221,30 +221,22 @@ SimulationCUDA::stepForward(double dt)
     resolveCollisions(m_Fd, m_Gd, m_GNd, prevP(), m_Vd, m_nParticles,
                       minExtent, collDims, cellSize, m_particleRadius, m_cudaProp);
     
-    const float4 groundPlane = make_float4(0.0, 1.0, 0.0, 0.0);
-    handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
-                          groundPlane, m_cudaProp);
-    
-    
-    
     const float _1_R2 = 1.0f/sqrtf(2.0);
     const float d = 0.1/_1_R2;
     
-    float4 rampPlane = make_float4(-_1_R2, _1_R2, 0.0, -d+1);
-    handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
-                          rampPlane, m_cudaProp);
+    const float4 planes[] = {make_float4(0.0, 1.0, 0.0, 0.0),
+                             make_float4(-_1_R2, _1_R2, 0.0, -d+1),
+                             make_float4(_1_R2, _1_R2, 0.0, -d+1),
+                             make_float4(0, _1_R2, _1_R2, -d+0.5),
+                             make_float4(0, _1_R2, -_1_R2, -d+0.5),
+                             make_float4(0, -1.0, 0, 2)};
     
-    rampPlane = make_float4(_1_R2, _1_R2, 0.0, -d+1);
-    handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
-                          rampPlane, m_cudaProp);
-    
-    rampPlane = make_float4(0, _1_R2, _1_R2, -d+0.5);
-    handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
-                          rampPlane, m_cudaProp);
-    
-    rampPlane = make_float4(0, _1_R2, -_1_R2, -d+0.5);
-    handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles, m_particleRadius,
-                          rampPlane, m_cudaProp);
+    for(unsigned n = 0; n < sizeof(planes)/sizeof(float4); n++)
+    {
+        handlePlaneCollisions(prevP(), m_Vd, m_Fd, m_nParticles,
+                              m_particleRadius,
+                              planes[n], m_cudaProp);
+    }
     
     if(m_pCollidable != NULL)
     {

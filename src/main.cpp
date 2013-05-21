@@ -29,6 +29,18 @@ const unsigned RIGHT_BTN = 4;
 
 namespace Zillion {
 
+struct AppSettings
+{
+    AppSettings():
+        nGridDim(GRID_DIM),
+        nParticleSubdiv(PARTICLE_SUBDIVISIONS)
+        {};
+    
+    unsigned nGridDim;
+    unsigned nParticleSubdiv;
+};
+    
+    
 int g_cudaDevice = 0;
 
 
@@ -571,7 +583,7 @@ enum InteractionMode
 };
 
 bool
-run()
+run(AppSettings& settings)
 {
     ChequerTexture chequerTex(2);
     
@@ -599,7 +611,7 @@ run()
         Imath::V3f dragStartPt;
         Imath::Plane3f dragPlane;
         
-        const unsigned nDimNum = GRID_DIM;
+        const unsigned nDimNum = settings.nGridDim;
         const float gridSize = GRID_SIZE;
         const float cellSize = gridSize / float(nDimNum);
         const float particleRadius = cellSize * 0.5 *
@@ -608,7 +620,8 @@ run()
         // Create VBO for sphere
         PlanePrimitive ground( Imath::Plane3f(Imath::V3f(0.0, 2.0, 0.0), 0.0));
         SpherePrimitive dome(FAR, 100, 50);
-        SpherePrimitive particle(1.0, 12, 6);
+        SpherePrimitive particle(1.0, settings.nParticleSubdiv*2,
+                                      settings.nParticleSubdiv);
         
         const float ballRadius = 0.2;
         
@@ -791,7 +804,7 @@ run()
                             Imath::V3f c = camera.center();
                             float d = camera.distance();
 
-                            c += (d/4.0f)*(hDelta*hAxis + vDelta*vAxis);
+                            c += (d/10.0f)*(hDelta*hAxis + vDelta*vAxis);
 
                             camera.setCenter(c);
                         }
@@ -1007,6 +1020,36 @@ run()
 int
 main(int argc, char* argv[])
 {
+    // Parse arguments
+    
+    Zillion::AppSettings settings;
+    if(argc > 1)
+    {
+        int i = atoi(argv[1]);
+        if(i < 1 || i > 60)
+        {
+            std::cerr << "Error: Grid size must be between 1 and 60" << std::endl;
+            return 1;
+        }
+        
+        settings.nGridDim = unsigned(i);
+    }
+    
+    if(argc > 2)
+    {
+        int i = atoi(argv[2]);
+        if(i < 3 || i > 10)
+        {
+            std::cerr << "Error: Particle subdivisions must be between 3 and 10" << std::endl;
+            return 1;
+        }
+        
+        settings.nParticleSubdiv = unsigned(i);
+    }
+    
+    
+    // Initialise CUDA
+    
     if(!Zillion::initCUDA())
         return 1;
     
@@ -1027,8 +1070,10 @@ main(int argc, char* argv[])
 	glewExperimental = GL_TRUE;
 	glewInit();
 
+    
+    
     Zillion::init();
-    bool status = Zillion::run();
+    bool status = Zillion::run(settings);
 
 	glfwTerminate();
 
